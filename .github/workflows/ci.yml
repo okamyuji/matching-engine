@@ -18,7 +18,7 @@ on:
       - develop
 
 env:
-  GO_VERSION: '1.25'
+  GO_VERSION: '1.23'
 
 jobs:
   lint:
@@ -57,6 +57,7 @@ jobs:
         with:
           version: latest
           args: --timeout=5m
+          skip-cache: true
 
   test:
     name: Test
