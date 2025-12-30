@@ -5,7 +5,6 @@ version: "2"
 
 run:
   timeout: 5m
-  # go: "1.25"  # ローカル環境のGoバージョンを自動検出
   tests: true
 
 linters:
@@ -16,7 +15,6 @@ linters:
     - staticcheck
     - unused
     - misspell
-
   disable:
     - depguard
 
@@ -24,13 +22,11 @@ linters:
     errcheck:
       check-type-assertions: true
       check-blank: true
-
     govet:
       enable-all: true
       disable:
         - shadow
         - fieldalignment
-
     misspell:
       locale: US
 
