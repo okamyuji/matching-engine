@@ -1,0 +1,66 @@
+{
+  "scoringComponents": [
+    {
+      "name": "financial_health",
+      "type": "euclidean",
+      "weight": 0.25,
+      "fields": ["revenue", "ebitda_margin", "roe", "roa", "debt_equity_ratio", "current_ratio"]
+    },
+    {
+      "name": "industry_synergy",
+      "type": "categorical",
+      "weight": 0.15,
+      "fields": ["industry"]
+    },
+    {
+      "name": "technology_overlap",
+      "type": "jaccard",
+      "weight": 0.20,
+      "fields": ["technology"]
+    },
+    {
+      "name": "growth_trajectory",
+      "type": "time_series",
+      "weight": 0.15,
+      "fields": ["revenue_trend"]
+    },
+    {
+      "name": "profitability_trend",
+      "type": "time_series",
+      "weight": 0.10,
+      "fields": ["ebitda_trend"]
+    },
+    {
+      "name": "customer_segment_fit",
+      "type": "jaccard",
+      "weight": 0.10,
+      "fields": ["market"]
+    },
+    {
+      "name": "market_overlap",
+      "type": "jaccard",
+      "weight": 0.05,
+      "fields": ["market"]
+    }
+  ],
+  "filters": [
+    {
+      "field": "debt_equity_ratio",
+      "operator": "less_than",
+      "value": 4.0
+    },
+    {
+      "field": "revenue_trend.trend",
+      "operator": "greater_than",
+      "value": 0.05
+    }
+  ],
+  "ranking": {
+    "minScore": 0.50,
+    "diversity": {
+      "groupBy": "industry",
+      "maxPerGroup": 3
+    },
+    "randomFactor": 0.05
+  }
+}

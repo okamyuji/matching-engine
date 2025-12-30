@@ -1,0 +1,69 @@
+{
+  "version": "1.0",
+  "domain": "dating",
+  "description": "Dating matching configuration with weighted scoring components",
+  "scoring": {
+    "min_score": 0.30,
+    "components": [
+      {
+        "name": "age_similarity",
+        "type": "euclidean",
+        "fields": ["age"],
+        "weight": 0.20,
+        "transform": {
+          "type": "inverse"
+        }
+      },
+      {
+        "name": "location_match",
+        "type": "categorical",
+        "field": "prefecture",
+        "weight": 0.15
+      },
+      {
+        "name": "hobby_similarity",
+        "type": "jaccard",
+        "field": "tags",
+        "weight": 0.25
+      },
+      {
+        "name": "marriage_compatibility",
+        "type": "categorical",
+        "field": "marriage_desire",
+        "weight": 0.20
+      },
+      {
+        "name": "height_preference",
+        "type": "euclidean",
+        "fields": ["height"],
+        "weight": 0.05,
+        "transform": {
+          "type": "inverse"
+        }
+      },
+      {
+        "name": "smoking_compatibility",
+        "type": "categorical",
+        "field": "smoking",
+        "weight": 0.10
+      },
+      {
+        "name": "drinking_compatibility",
+        "type": "categorical",
+        "field": "drinking",
+        "weight": 0.05
+      }
+    ]
+  },
+  "ranking": {
+    "sort_order": "desc",
+    "diversity": {
+      "enabled": true,
+      "group_by_field": "elo",
+      "max_per_group": 5
+    },
+    "random_factor": 0.15,
+    "limit": 20,
+    "offset": 0
+  }
+}

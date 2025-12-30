@@ -1,0 +1,221 @@
+# ========================================
+# Matching Engine Project .gitignore
+# ========================================
+
+# ========================================
+# 機密情報 (CRITICAL - 絶対にコミットしない)
+# ========================================
+# 環境変数ファイル
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+.env.test
+
+# 認証情報・秘密鍵
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+secrets.json
+service-account*.json
+
+# AWS/GCP認証情報
+.aws/
+.gcloud/
+
+# パスワード・トークンファイル
+*password*
+*secret*
+*token*
+!*_test.go
+
+# ローカル設定ファイル
+configs/local.*
+configs/*.local.*
+config.local.json
+
+# ========================================
+# Go 関連
+# ========================================
+# バイナリ
+matching-engine
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# テストバイナリ
+*.test
+
+# カバレッジファイル
+*.out
+coverage.out
+coverage_*.out
+coverage.html
+
+# Go ワークスペース
+go.work
+go.work.sum
+
+# ビルド成果物
+bin/
+dist/
+build/
+
+# Vendor directory
+vendor/
+
+# ========================================
+# IDE・エディタ設定
+# ========================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (GoLand, IntelliJ IDEA)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw[a-z]
+*.un~
+Session.vim
+
+# Emacs
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# NOTE: .cursor/rules/ はプロジェクトの一部なので除外しない
+
+# ========================================
+# OS 固有ファイル
+# ========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ========================================
+# Docker 関連
+# ========================================
+# ローカルオーバーライド
+docker-compose.override.yml
+docker-compose.local.yml
+
+# データボリューム
+data/
+volumes/
+.docker/
+
+# ========================================
+# データベース関連
+# ========================================
+# SQLite (開発用ローカルDB)
+*.db
+*.sqlite
+*.sqlite3
+
+# MySQL ダンプファイル
+*.sql.gz
+dump/
+backup/
+
+# データディレクトリ
+mysql_data/
+postgres_data/
+
+# ========================================
+# ログファイル
+# ========================================
+*.log
+logs/
+log/
+*.log.*
+
+# ========================================
+# 一時ファイル・キャッシュ
+# ========================================
+tmp/
+temp/
+*.tmp
+*.cache
+.cache/
+
+# ========================================
+# テスト関連
+# ========================================
+# TestContainers ローカルキャッシュ
+.testcontainers/
+
+# テスト用一時ファイル
+testdata/tmp/
+testdata/output/
+
+# ========================================
+# 依存関係・パッケージマネージャ
+# ========================================
+# Node.js (もしフロントエンドがあれば)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ========================================
+# CI/CD 関連
+# ========================================
+# ローカルCI実行ファイル
+.gitlab-ci-local/
+
+# ========================================
+# その他
+# ========================================
+# アーカイブ
+*.zip
+*.tar
+*.tar.gz
+*.rar
+
+# ドキュメント生成物（ソースは除外しない）
+docs/build/
+site/
+
+# プロファイリング
+*.prof
+*.pprof
+cpu.out
+mem.out
+
+# デバッグファイル
+debug
+__debug_bin
+
+# Air (ホットリロードツール)
+tmp/
+.air.toml.local

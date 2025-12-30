@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Cursor
+.cursor
+.cursorignore
+
+# Claude
+claude/
+CLAUDE.md
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+*_test.go
+coverage.out
+coverage.html
+
+# Build artifacts
+bin/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+*.tmp
+*.log
+
+# Local config
+.env
+.env.local
+.env.*.local
+*.local.yml
+*.local.yaml
+
+# Docker
+Dockerfile
+compose.yaml
+docker-compose*.yml
+docker-compose*.yaml
+.docker
+
+# Scripts (not needed in container)
+scripts/
+
+# GitHub
+.github/
+
+# Makefile
+Makefile
