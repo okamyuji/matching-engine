@@ -534,11 +534,11 @@ func TestUserRepository_FindCandidates_AgeFilter(t *testing.T) {
 		birthDate   time.Time
 		shouldMatch bool
 	}{
-		{"young", now.AddDate(-20, 0, 0), false},  // 20歳 (範囲外)
-		{"match1", now.AddDate(-25, 0, 0), true},  // 25歳
-		{"match2", now.AddDate(-30, 0, 0), true},  // 30歳
-		{"match3", now.AddDate(-35, 0, 0), true},  // 35歳
-		{"old", now.AddDate(-45, 0, 0), false},    // 45歳 (範囲外)
+		{"young", now.AddDate(-20, 0, 0), false}, // 20歳 (範囲外)
+		{"match1", now.AddDate(-25, 0, 0), true}, // 25歳
+		{"match2", now.AddDate(-30, 0, 0), true}, // 30歳
+		{"match3", now.AddDate(-35, 0, 0), true}, // 35歳
+		{"old", now.AddDate(-45, 0, 0), false},   // 45歳 (範囲外)
 	}
 
 	for _, tc := range testCases {
