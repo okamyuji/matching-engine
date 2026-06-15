@@ -527,17 +527,18 @@ func TestUserRepository_FindCandidates_AgeFilter(t *testing.T) {
 		t.Fatalf("検索ユーザー作成失敗: %v", err)
 	}
 
-	// 年齢が異なる候補ユーザー作成
+	// 年齢が異なる候補ユーザー作成（time.Now()基準で年齢を算出）
+	now := time.Now()
 	testCases := []struct {
 		id          string
 		birthDate   time.Time
 		shouldMatch bool
 	}{
-		{"young", time.Date(2005, 1, 1, 0, 0, 0, 0, time.UTC), false}, // 20歳未満
-		{"match1", time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), true}, // 25歳
-		{"match2", time.Date(1995, 1, 1, 0, 0, 0, 0, time.UTC), true}, // 30歳
-		{"match3", time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC), true}, // 35歳
-		{"old", time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC), false},   // 45歳
+		{"young", now.AddDate(-20, 0, 0), false},  // 20歳 (範囲外)
+		{"match1", now.AddDate(-25, 0, 0), true},  // 25歳
+		{"match2", now.AddDate(-30, 0, 0), true},  // 30歳
+		{"match3", now.AddDate(-35, 0, 0), true},  // 35歳
+		{"old", now.AddDate(-45, 0, 0), false},    // 45歳 (範囲外)
 	}
 
 	for _, tc := range testCases {
