@@ -2,9 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
 
-	"github.com/uptrace/bun"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository/sqlcgen"
 )
 
 // CompanyRepository 企業データアクセス用インターフェース
@@ -16,164 +20,283 @@ type CompanyRepository interface {
 	Update(ctx context.Context, company *domain.Company) error
 }
 
-// CompanyWithFinancials 企業と財務情報を結合する
+// CompanyWithFinancials 企業と財務データを結合する
 type CompanyWithFinancials struct {
 	Company    *domain.Company
 	Financials []*domain.Financials
 }
 
-// companyRepository CompanyRepositoryのBUN実装
+// companyRepository CompanyRepository の sqlc 実装
 type companyRepository struct {
-	db *bun.DB
+	q *sqlcgen.Queries
 }
 
-// NewCompanyRepository 新しいCompanyRepositoryを作成する
-func NewCompanyRepository(db *bun.DB) CompanyRepository {
-	return &companyRepository{db: db}
+// NewCompanyRepository 新しい CompanyRepository を作成する
+func NewCompanyRepository(db DB) CompanyRepository {
+	return &companyRepository{q: sqlcgen.New(db)}
 }
 
-// FindByID IDにより企業を取得する
+// FindByID IDにより企業（技術・市場を含む）を取得する
 func (r *companyRepository) FindByID(ctx context.Context, id string) (*domain.Company, error) {
-	company := &domain.Company{}
-	err := r.db.NewSelect().
-		Model(company).
-		Where("id = ?", id).
-		Relation("Technologies").
-		Relation("Markets").
-		Scan(ctx)
+	row, err := r.q.GetCompany(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	company := companyFromRow(row)
+	if err := r.loadRelations(ctx, company); err != nil {
 		return nil, err
 	}
 	return company, nil
 }
 
-// FindByPurpose 目的（buyer/seller）で候補企業を取得する
-// 要件:
-// - 業界、地域、売上、従業員数でフィルタ
-// - 最大500件の候補
+// FindByPurpose 目的と条件に合う企業を最大500件、直近5年分の財務データ付きで取得する
+// 財務条件（売上・EBITDA・負債比率）は最新年度の値で判定する
 func (r *companyRepository) FindByPurpose(
 	ctx context.Context,
 	purpose domain.MatchingPurpose,
 	criteria *domain.MAMatchingCriteria,
 ) ([]*CompanyWithFinancials, error) {
-	var companies []*domain.Company
-
-	query := r.db.NewSelect().
-		Model(&companies).
-		Where("matching_purpose = ?", purpose)
-
-	// 業界フィルタ
-	if criteria != nil && len(criteria.TargetIndustries) > 0 {
-		industries := make([]string, len(criteria.TargetIndustries))
-		for i, ind := range criteria.TargetIndustries {
-			industries[i] = string(ind.Industry)
-		}
-		query = query.Where("industry IN (?)", bun.In(industries))
+	params := sqlcgen.ListCompaniesByPurposeParams{
+		Purpose:    string(purpose),
+		Industries: []string{},
 	}
-
-	// 従業員数フィルタ
 	if criteria != nil {
+		params.Industries = criteria.GetIndustryStrings()
 		if criteria.EmployeeMin > 0 {
-			query = query.Where("employee_count >= ?", criteria.EmployeeMin)
+			params.EmployeeMin = int32PtrFromInt(criteria.EmployeeMin)
 		}
 		if criteria.EmployeeMax > 0 {
-			query = query.Where("employee_count <= ?", criteria.EmployeeMax)
+			params.EmployeeMax = int32PtrFromInt(criteria.EmployeeMax)
 		}
 	}
-
-	query = query.Limit(500)
-
-	err := query.Scan(ctx)
+	rows, err := r.q.ListCompaniesByPurpose(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
-	// 各企業の財務情報とテクノロジー、マーケットをロード
-	results := make([]*CompanyWithFinancials, 0, len(companies))
-	for _, company := range companies {
-		// 財務情報を取得（最新5年分）
-		var financials []*domain.Financials
-		err := r.db.NewSelect().
-			Model(&financials).
-			Where("company_id = ?", company.ID).
-			Order("fiscal_year DESC").
-			Limit(5).
-			Scan(ctx)
-
-		if err != nil {
-			// 財務情報がない場合は空配列
-			financials = []*domain.Financials{}
-		}
-
-		// テクノロジーとマーケットをロード
-		err = r.db.NewSelect().
-			Model(company).
-			Where("id = ?", company.ID).
-			Relation("Technologies").
-			Relation("Markets").
-			Scan(ctx)
-		if err != nil {
+	results := make([]*CompanyWithFinancials, 0, len(rows))
+	for _, row := range rows {
+		company := companyFromRow(row)
+		if err := r.loadRelations(ctx, company); err != nil {
 			return nil, err
 		}
-
-		// 売上・EBITDAフィルタ（最新年度の財務情報で判定）
-		if len(financials) > 0 {
-			latest := financials[0]
-			if criteria != nil {
-				// 売上フィルタ
-				if criteria.RevenueMin > 0 && latest.Revenue < criteria.RevenueMin {
-					continue
-				}
-				if criteria.RevenueMax > 0 && latest.Revenue > criteria.RevenueMax {
-					continue
-				}
-				// EBITDAフィルタ
-				if criteria.EBITDAMin > 0 && latest.EBITDA < criteria.EBITDAMin {
-					continue
-				}
-				// 負債比率フィルタ
-				if criteria.MaxDebtEquityRatio > 0 && latest.DebtEquityRatio > criteria.MaxDebtEquityRatio {
-					continue
-				}
-			}
+		finRows, err := r.q.ListFinancialsByCompany(ctx, sqlcgen.ListFinancialsByCompanyParams{CompanyID: company.ID, Limit: 5})
+		if err != nil {
+			return nil, fmt.Errorf("list financials %s: %w", company.ID, err)
 		}
-
-		results = append(results, &CompanyWithFinancials{
-			Company:    company,
-			Financials: financials,
-		})
+		financials := financialsFromRows(finRows)
+		if len(financials) > 0 && criteria != nil && !matchesFinancialCriteria(financials[0], criteria) {
+			continue
+		}
+		results = append(results, &CompanyWithFinancials{Company: company, Financials: financials})
 	}
-
 	return results, nil
 }
 
-// FindCriteria 企業のマッチング基準を取得する
+func matchesFinancialCriteria(latest *domain.Financials, c *domain.MAMatchingCriteria) bool {
+	if c.RevenueMin > 0 && latest.Revenue < c.RevenueMin {
+		return false
+	}
+	if c.RevenueMax > 0 && latest.Revenue > c.RevenueMax {
+		return false
+	}
+	if c.EBITDAMin > 0 && latest.EBITDA < c.EBITDAMin {
+		return false
+	}
+	if c.MaxDebtEquityRatio > 0 && latest.DebtEquityRatio > c.MaxDebtEquityRatio {
+		return false
+	}
+	return true
+}
+
+// FindCriteria 企業のマッチング条件（対象業種を含む）を取得する
 func (r *companyRepository) FindCriteria(ctx context.Context, companyID string) (*domain.MAMatchingCriteria, error) {
-	criteria := &domain.MAMatchingCriteria{}
-	err := r.db.NewSelect().
-		Model(criteria).
-		Where("company_id = ?", companyID).
-		Relation("TargetIndustries").
-		Scan(ctx)
+	row, err := r.q.GetCriteria(ctx, companyID)
 	if err != nil {
 		return nil, err
+	}
+	criteria := &domain.MAMatchingCriteria{
+		CompanyID:          row.CompanyID,
+		Purpose:            domain.MatchingPurpose(row.Purpose),
+		RevenueMin:         int64FromPtr(row.RevenueMin),
+		RevenueMax:         int64FromPtr(row.RevenueMax),
+		EBITDAMin:          int64FromPtr(row.EbitdaMin),
+		EmployeeMin:        intFromInt32Ptr(row.EmployeeMin),
+		EmployeeMax:        intFromInt32Ptr(row.EmployeeMax),
+		MaxDebtEquityRatio: float64FromPtr(row.MaxDebtEquityRatio),
+		UpdatedAt:          row.UpdatedAt,
+	}
+	inds, err := r.q.ListCriteriaIndustries(ctx, companyID)
+	if err != nil {
+		return nil, fmt.Errorf("list criteria industries: %w", err)
+	}
+	for _, i := range inds {
+		criteria.TargetIndustries = append(criteria.TargetIndustries, domain.CriteriaIndustry{ID: i.ID, CompanyID: i.CompanyID, Industry: domain.Industry(i.Industry)})
 	}
 	return criteria, nil
 }
 
 // Create 新しい企業を挿入する
 func (r *companyRepository) Create(ctx context.Context, company *domain.Company) error {
-	_, err := r.db.NewInsert().
-		Model(company).
-		Exec(ctx)
-	return err
+	now := time.Now()
+	createdAt := company.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	updatedAt := company.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = now
+	}
+	listing := company.ListingStatus
+	if listing == "" {
+		listing = domain.ListingPrivate
+	}
+	return r.q.CreateCompany(ctx, sqlcgen.CreateCompanyParams{
+		ID:              company.ID,
+		Name:            company.Name,
+		Industry:        string(company.Industry),
+		Location:        company.Location,
+		EmployeeCount:   int32(company.EmployeeCount), //nolint:gosec // 従業員数
+		Founded:         company.Founded,
+		ListingStatus:   string(listing),
+		MatchingPurpose: string(company.MatchingPurpose),
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
+	})
 }
 
 // Update 既存の企業を更新する
 func (r *companyRepository) Update(ctx context.Context, company *domain.Company) error {
-	_, err := r.db.NewUpdate().
-		Model(company).
-		Where("id = ?", company.ID).
-		Exec(ctx)
-	return err
+	listing := company.ListingStatus
+	if listing == "" {
+		listing = domain.ListingPrivate
+	}
+	return r.q.UpdateCompany(ctx, sqlcgen.UpdateCompanyParams{
+		ID:              company.ID,
+		Name:            company.Name,
+		Industry:        string(company.Industry),
+		Location:        company.Location,
+		EmployeeCount:   int32(company.EmployeeCount), //nolint:gosec // 従業員数
+		Founded:         company.Founded,
+		ListingStatus:   string(listing),
+		MatchingPurpose: string(company.MatchingPurpose),
+	})
 }
+
+func (r *companyRepository) loadRelations(ctx context.Context, company *domain.Company) error {
+	techs, err := r.q.ListCompanyTechnologies(ctx, company.ID)
+	if err != nil {
+		return fmt.Errorf("list technologies %s: %w", company.ID, err)
+	}
+	company.Technologies = make([]*domain.CompanyTechnology, 0, len(techs))
+	for _, t := range techs {
+		company.Technologies = append(company.Technologies, &domain.CompanyTechnology{ID: t.ID, CompanyID: t.CompanyID, Technology: t.Technology})
+	}
+	markets, err := r.q.ListCompanyMarkets(ctx, company.ID)
+	if err != nil {
+		return fmt.Errorf("list markets %s: %w", company.ID, err)
+	}
+	company.Markets = make([]*domain.CompanyMarket, 0, len(markets))
+	for _, m := range markets {
+		company.Markets = append(company.Markets, &domain.CompanyMarket{ID: m.ID, CompanyID: m.CompanyID, Market: m.Market})
+	}
+	return nil
+}
+
+func companyFromRow(row sqlcgen.MaCompany) *domain.Company {
+	return &domain.Company{
+		ID:              row.ID,
+		Name:            row.Name,
+		Industry:        domain.Industry(row.Industry),
+		Location:        row.Location,
+		EmployeeCount:   int(row.EmployeeCount),
+		Founded:         row.Founded,
+		ListingStatus:   domain.ListingStatus(row.ListingStatus),
+		MatchingPurpose: domain.MatchingPurpose(row.MatchingPurpose),
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+	}
+}
+
+// InsertTechnology 企業の技術を追加する（テストデータ投入や管理操作向け）
+func InsertTechnology(ctx context.Context, db DB, tech *domain.CompanyTechnology) error {
+	id, err := sqlcgen.New(db).InsertCompanyTechnology(ctx, sqlcgen.InsertCompanyTechnologyParams{CompanyID: tech.CompanyID, Technology: tech.Technology})
+	if err != nil {
+		return err
+	}
+	tech.ID = id
+	return nil
+}
+
+// InsertMarket 企業の市場を追加する（テストデータ投入や管理操作向け）
+func InsertMarket(ctx context.Context, db DB, market *domain.CompanyMarket) error {
+	id, err := sqlcgen.New(db).InsertCompanyMarket(ctx, sqlcgen.InsertCompanyMarketParams{CompanyID: market.CompanyID, Market: market.Market})
+	if err != nil {
+		return err
+	}
+	market.ID = id
+	return nil
+}
+
+// UpsertCriteria マッチング条件を挿入または更新する。対象業種は criteria.TargetIndustries で置き換える
+func UpsertCriteria(ctx context.Context, db DB, criteria *domain.MAMatchingCriteria) error {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := sqlcgen.New(tx)
+	params := sqlcgen.UpsertCriteriaParams{
+		CompanyID: criteria.CompanyID,
+		Purpose:   string(criteria.Purpose),
+	}
+	if criteria.RevenueMin > 0 {
+		params.RevenueMin = int64Ptr(criteria.RevenueMin)
+	}
+	if criteria.RevenueMax > 0 {
+		params.RevenueMax = int64Ptr(criteria.RevenueMax)
+	}
+	if criteria.EBITDAMin > 0 {
+		params.EbitdaMin = int64Ptr(criteria.EBITDAMin)
+	}
+	if criteria.EmployeeMin > 0 {
+		params.EmployeeMin = int32PtrFromInt(criteria.EmployeeMin)
+	}
+	if criteria.EmployeeMax > 0 {
+		params.EmployeeMax = int32PtrFromInt(criteria.EmployeeMax)
+	}
+	if criteria.MaxDebtEquityRatio > 0 {
+		params.MaxDebtEquityRatio = float64Ptr(criteria.MaxDebtEquityRatio)
+	}
+	if err := q.UpsertCriteria(ctx, params); err != nil {
+		return err
+	}
+	if len(criteria.TargetIndustries) > 0 {
+		if err := q.DeleteCriteriaIndustries(ctx, criteria.CompanyID); err != nil {
+			return err
+		}
+		for i := range criteria.TargetIndustries {
+			ind := &criteria.TargetIndustries[i]
+			id, err := q.InsertCriteriaIndustry(ctx, sqlcgen.InsertCriteriaIndustryParams{CompanyID: criteria.CompanyID, Industry: string(ind.Industry)})
+			if err != nil {
+				return err
+			}
+			ind.ID = id
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// InsertCriteriaIndustry マッチング条件の対象業種を1件追加する
+func InsertCriteriaIndustry(ctx context.Context, db DB, ind *domain.CriteriaIndustry) error {
+	id, err := sqlcgen.New(db).InsertCriteriaIndustry(ctx, sqlcgen.InsertCriteriaIndustryParams{CompanyID: ind.CompanyID, Industry: string(ind.Industry)})
+	if err != nil {
+		return err
+	}
+	ind.ID = id
+	return nil
+}
+
+// IsNotFound 行が見つからないエラーかを返す
+func IsNotFound(err error) bool { return errors.Is(err, pgx.ErrNoRows) }

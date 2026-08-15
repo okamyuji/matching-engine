@@ -5,17 +5,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestMAMatchRepository_Save_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
-	intRepo := NewInterestRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -120,9 +120,9 @@ func TestMAMatchRepository_Save_DuplicateID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
-	intRepo := NewInterestRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -212,9 +212,9 @@ func TestMAMatchRepository_FindByID_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
-	intRepo := NewInterestRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -318,7 +318,7 @@ func TestMAMatchRepository_FindByID_NotFound(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しないIDで検索
@@ -332,7 +332,7 @@ func TestMAMatchRepository_FindByID_EmptyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のIDで検索
@@ -346,9 +346,9 @@ func TestMAMatchRepository_FindMutual_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
-	intRepo := NewInterestRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業3社作成
@@ -479,9 +479,9 @@ func TestMAMatchRepository_FindMutual_OneWayInterest(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
-	intRepo := NewInterestRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -557,8 +557,8 @@ func TestMAMatchRepository_FindMutual_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成（マッチなし）
@@ -593,7 +593,7 @@ func TestMAMatchRepository_FindMutual_EmptyCompanyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMAMatchRepository(td.DB)
+	matchRepo := NewMAMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のCompanyIDで検索

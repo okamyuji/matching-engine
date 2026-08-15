@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
-	"github.com/uptrace/bun"
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository/sqlcgen"
 )
 
 // UserRepository ユーザーデータアクセス用インターフェース
@@ -22,27 +25,24 @@ type UserWithProfile struct {
 	Profile *domain.Profile
 }
 
-// userRepository UserRepositoryのBUN実装
+// userRepository UserRepository の sqlc 実装
 type userRepository struct {
-	db *bun.DB
+	db DB
+	q  *sqlcgen.Queries
 }
 
-// NewUserRepository 新しいUserRepositoryを作成する
-func NewUserRepository(db *bun.DB) UserRepository {
-	return &userRepository{db: db}
+// NewUserRepository 新しい UserRepository を作成する
+func NewUserRepository(db DB) UserRepository {
+	return &userRepository{db: db, q: sqlcgen.New(db)}
 }
 
 // FindByID IDによりユーザーを取得する
 func (r *userRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {
-	user := &domain.User{}
-	err := r.db.NewSelect().
-		Model(user).
-		Where("id = ?", id).
-		Scan(ctx)
+	row, err := r.q.GetUser(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return user, nil
+	return userFromRow(row), nil
 }
 
 // FindCandidates 設定に基づいて候補ユーザーを取得する
@@ -55,111 +55,113 @@ func (r *userRepository) FindCandidates(
 	userID string,
 	pref *domain.Preference,
 ) ([]*UserWithProfile, error) {
-	var users []*domain.User
-
-	// Profileテーブルと結合してフィルタリング
-	query := r.db.NewSelect().
-		Model(&users).
-		Join("INNER JOIN dating_profiles AS p ON p.user_id = id").
-		Where("id != ?", userID).
-		Where("verified = ?", true)
-
-	// 年齢フィルタ
+	params := sqlcgen.FindCandidateUsersParams{
+		UserID:           userID,
+		Prefectures:      pref.GetPrefectureStrings(),
+		Educations:       pref.GetEducationStrings(),
+		MarriageDesires:  pref.GetMarriageDesireStrings(),
+		SmokingStatuses:  pref.GetSmokingStatusStrings(),
+		DrinkingStatuses: pref.GetDrinkingStatusStrings(),
+	}
+	// 年齢は生年月日の範囲に変換する。AgeMax 歳の人は誕生日の前日まで含めるため 1 年広く取る
 	if pref.AgeMin > 0 && pref.AgeMax > 0 {
-		minDate := time.Now().AddDate(-pref.AgeMax-1, 0, 0)
-		maxDate := time.Now().AddDate(-pref.AgeMin, 0, 0)
-		query = query.Where("birth_date BETWEEN ? AND ?", minDate, maxDate)
+		now := time.Now()
+		minDate := now.AddDate(-pref.AgeMax-1, 0, 0)
+		maxDate := now.AddDate(-pref.AgeMin, 0, 0)
+		params.BirthMin = &minDate
+		params.BirthMax = &maxDate
 	}
-
-	// 都道府県フィルタ
-	prefStrings := pref.GetPrefectureStrings()
-	if len(prefStrings) > 0 {
-		query = query.Where("prefecture IN (?)", bun.In(prefStrings))
-	}
-
-	// 身長フィルタ
 	if pref.HeightMin > 0 {
-		query = query.Where("p.height >= ?", pref.HeightMin)
+		params.HeightMin = int32PtrFromInt(pref.HeightMin)
 	}
 	if pref.HeightMax > 0 {
-		query = query.Where("p.height <= ?", pref.HeightMax)
+		params.HeightMax = int32PtrFromInt(pref.HeightMax)
 	}
-
-	// 収入フィルタ
 	if pref.IncomeMin > 0 {
-		query = query.Where("p.income_level >= ?", pref.IncomeMin)
+		params.IncomeMin = int32PtrFromInt(pref.IncomeMin)
 	}
 
-	// 学歴フィルタ
-	eduStrings := pref.GetEducationStrings()
-	if len(eduStrings) > 0 {
-		query = query.Where("p.education IN (?)", bun.In(eduStrings))
-	}
-
-	// 結婚意向フィルタ
-	marriageStrings := pref.GetMarriageDesireStrings()
-	if len(marriageStrings) > 0 {
-		query = query.Where("p.marriage_desire IN (?)", bun.In(marriageStrings))
-	}
-
-	// 喫煙フィルタ
-	smokingStrings := pref.GetSmokingStatusStrings()
-	if len(smokingStrings) > 0 {
-		query = query.Where("p.smoking IN (?)", bun.In(smokingStrings))
-	}
-
-	// 飲酒フィルタ
-	drinkingStrings := pref.GetDrinkingStatusStrings()
-	if len(drinkingStrings) > 0 {
-		query = query.Where("p.drinking IN (?)", bun.In(drinkingStrings))
-	}
-
-	query = query.Limit(1000)
-
-	err := query.Scan(ctx)
+	rows, err := r.q.FindCandidateUsers(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
-	// 各ユーザーのプロフィールをロード
-	results := make([]*UserWithProfile, 0, len(users))
-	for _, user := range users {
-		profile := &domain.Profile{}
-		err := r.db.NewSelect().
-			Model(profile).
-			Where("user_id = ?", user.ID).
-			Scan(ctx)
-
-		// プロフィールが存在しない場合はnilでOK
-		if err != nil && err.Error() != "sql: no rows in result set" {
+	results := make([]*UserWithProfile, 0, len(rows))
+	for _, row := range rows {
+		user := userFromRow(row)
+		profile, err := loadProfile(ctx, r.q, user.ID)
+		if err != nil {
 			return nil, err
 		}
-		if err != nil {
-			profile = nil
-		}
-
-		results = append(results, &UserWithProfile{
-			User:    user,
-			Profile: profile,
-		})
+		results = append(results, &UserWithProfile{User: user, Profile: profile})
 	}
-
 	return results, nil
 }
 
 // Create 新しいユーザーを挿入する
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
-	_, err := r.db.NewInsert().
-		Model(user).
-		Exec(ctx)
-	return err
+	now := time.Now()
+	createdAt := user.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	lastActive := user.LastActiveAt
+	if lastActive.IsZero() {
+		lastActive = now
+	}
+	return r.q.CreateUser(ctx, sqlcgen.CreateUserParams{
+		ID:           user.ID,
+		Nickname:     user.Nickname,
+		Gender:       string(user.Gender),
+		BirthDate:    user.BirthDate,
+		Prefecture:   string(user.Prefecture),
+		Verified:     user.Verified,
+		EloRating:    int32(user.EloRating), //nolint:gosec // レーティングは小さな整数
+		CreatedAt:    createdAt,
+		LastActiveAt: lastActive,
+	})
 }
 
 // Update 既存のユーザーを更新する
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
-	_, err := r.db.NewUpdate().
-		Model(user).
-		Where("id = ?", user.ID).
-		Exec(ctx)
-	return err
+	lastActive := user.LastActiveAt
+	if lastActive.IsZero() {
+		lastActive = time.Now()
+	}
+	return r.q.UpdateUser(ctx, sqlcgen.UpdateUserParams{
+		ID:           user.ID,
+		Nickname:     user.Nickname,
+		Gender:       string(user.Gender),
+		BirthDate:    user.BirthDate,
+		Prefecture:   string(user.Prefecture),
+		Verified:     user.Verified,
+		EloRating:    int32(user.EloRating), //nolint:gosec // レーティングは小さな整数
+		LastActiveAt: lastActive,
+	})
+}
+
+func userFromRow(row sqlcgen.DatingUser) *domain.User {
+	return &domain.User{
+		ID:           row.ID,
+		Nickname:     row.Nickname,
+		Gender:       domain.Gender(row.Gender),
+		BirthDate:    row.BirthDate,
+		Prefecture:   domain.Prefecture(row.Prefecture),
+		Verified:     row.Verified,
+		EloRating:    int(row.EloRating),
+		CreatedAt:    row.CreatedAt,
+		LastActiveAt: row.LastActiveAt,
+	}
+}
+
+// loadProfile プロフィールを取得する。存在しなければ nil を返す
+func loadProfile(ctx context.Context, q *sqlcgen.Queries, userID string) (*domain.Profile, error) {
+	row, err := q.GetProfile(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil //nolint:nilnil // プロフィール未設定は正常系
+		}
+		return nil, fmt.Errorf("load profile %s: %w", userID, err)
+	}
+	return profileFromRow(row), nil
 }

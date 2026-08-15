@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
 )
 
 // MAFeatureMapper M&Aドメインから特徴ベクトルへの変換

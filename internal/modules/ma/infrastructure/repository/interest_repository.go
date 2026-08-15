@@ -2,60 +2,57 @@ package repository
 
 import (
 	"context"
+	"time"
 
-	"github.com/uptrace/bun"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository/sqlcgen"
 )
 
-// InterestRepository 興味表明データアクセス用インターフェース
+// InterestRepository 関心表明データアクセス用インターフェース
 type InterestRepository interface {
 	Save(ctx context.Context, interest *domain.Interest) error
 	FindByToCompany(ctx context.Context, toCompanyID string) ([]*domain.Interest, error)
 	Exists(ctx context.Context, fromCompanyID, toCompanyID string) (bool, error)
 }
 
-// interestRepository InterestRepositoryのBUN実装
+// interestRepository InterestRepository の sqlc 実装
 type interestRepository struct {
-	db *bun.DB
+	q *sqlcgen.Queries
 }
 
-// NewInterestRepository 新しいInterestRepositoryを作成する
-func NewInterestRepository(db *bun.DB) InterestRepository {
-	return &interestRepository{db: db}
+// NewInterestRepository 新しい InterestRepository を作成する
+func NewInterestRepository(db DB) InterestRepository {
+	return &interestRepository{q: sqlcgen.New(db)}
 }
 
-// Save 興味表明を保存する
+// Save 新しい関心表明を挿入する
 func (r *interestRepository) Save(ctx context.Context, interest *domain.Interest) error {
-	_, err := r.db.NewInsert().
-		Model(interest).
-		Exec(ctx)
-	return err
+	createdAt := interest.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	return r.q.InsertInterest(ctx, sqlcgen.InsertInterestParams{
+		ID:            interest.ID,
+		FromCompanyID: interest.FromCompanyID,
+		ToCompanyID:   interest.ToCompanyID,
+		CreatedAt:     createdAt,
+	})
 }
 
-// FindByToCompany 企業が受け取った興味表明を取得する
+// FindByToCompany 企業が受け取った関心表明を新しい順に取得する
 func (r *interestRepository) FindByToCompany(ctx context.Context, toCompanyID string) ([]*domain.Interest, error) {
-	var interests []*domain.Interest
-
-	err := r.db.NewSelect().
-		Model(&interests).
-		Where("to_company_id = ?", toCompanyID).
-		Order("created_at DESC").
-		Scan(ctx)
-
+	rows, err := r.q.ListInterestsByToCompany(ctx, toCompanyID)
 	if err != nil {
 		return nil, err
 	}
-
-	return interests, nil
+	out := make([]*domain.Interest, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, &domain.Interest{ID: row.ID, FromCompanyID: row.FromCompanyID, ToCompanyID: row.ToCompanyID, CreatedAt: row.CreatedAt})
+	}
+	return out, nil
 }
 
-// Exists 興味表明が既に存在するかチェックする
+// Exists 指定の向きの関心表明が存在するかを返す
 func (r *interestRepository) Exists(ctx context.Context, fromCompanyID, toCompanyID string) (bool, error) {
-	exists, err := r.db.NewSelect().
-		Model((*domain.Interest)(nil)).
-		Where("from_company_id = ?", fromCompanyID).
-		Where("to_company_id = ?", toCompanyID).
-		Exists(ctx)
-
-	return exists, err
+	return r.q.InterestExists(ctx, sqlcgen.InterestExistsParams{FromCompanyID: fromCompanyID, ToCompanyID: toCompanyID})
 }

@@ -10,19 +10,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	datingAPI "github.com/yourorg/matching-engine/internal/modules/dating/api"
-	datingApp "github.com/yourorg/matching-engine/internal/modules/dating/application"
-	datingInfra "github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/mapper"
-	datingRepo "github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/repository"
-	maAPI "github.com/yourorg/matching-engine/internal/modules/ma/api"
-	maApp "github.com/yourorg/matching-engine/internal/modules/ma/application"
-	maInfra "github.com/yourorg/matching-engine/internal/modules/ma/infrastructure/mapper"
-	maRepo "github.com/yourorg/matching-engine/internal/modules/ma/infrastructure/repository"
-	"github.com/yourorg/matching-engine/internal/shared/config"
-	"github.com/yourorg/matching-engine/internal/shared/database"
-	"github.com/yourorg/matching-engine/internal/shared/health"
-	"github.com/yourorg/matching-engine/internal/shared/logger"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	datingAPI "github.com/okamyuji/matching-engine/internal/modules/dating/api"
+	datingApp "github.com/okamyuji/matching-engine/internal/modules/dating/application"
+	datingInfra "github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/mapper"
+	datingRepo "github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository"
+	maAPI "github.com/okamyuji/matching-engine/internal/modules/ma/api"
+	maApp "github.com/okamyuji/matching-engine/internal/modules/ma/application"
+	maInfra "github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/mapper"
+	maRepo "github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/shared/config"
+	"github.com/okamyuji/matching-engine/internal/shared/database"
+	"github.com/okamyuji/matching-engine/internal/shared/health"
+	"github.com/okamyuji/matching-engine/internal/shared/logger"
 )
 
 func main() {
@@ -34,26 +34,24 @@ func main() {
 	slog.Info("starting matching engine", slog.String("env", cfg.Env))
 
 	// データベース接続
-	db, err := database.NewDB(&database.Config{
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	db, err := database.NewPool(dbCtx, &database.Config{
 		Host:            cfg.Database.Host,
 		Port:            cfg.Database.Port,
 		User:            cfg.Database.User,
 		Password:        cfg.Database.Password,
 		Database:        cfg.Database.Database,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		MaxIdleConns:    cfg.Database.MaxIdleConns,
+		SSLMode:         cfg.Database.SSLMode,
+		MaxConns:        int32(cfg.Database.MaxConns), //nolint:gosec // 設定値
+		MinConns:        int32(cfg.Database.MinConns), //nolint:gosec // 設定値
 		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
-		Debug:           cfg.Database.Debug,
 	})
+	dbCancel()
 	if err != nil {
 		slog.Error("failed to connect database", slog.Any("error", err))
 		os.Exit(1)
 	}
-	defer func() {
-		if err := database.Close(db); err != nil {
-			slog.Error("failed to close database", slog.Any("error", err))
-		}
-	}()
+	defer db.Close()
 	slog.Info("database connected")
 
 	// Datingモジュール初期化

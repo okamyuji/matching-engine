@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestLikeRepository_Save_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -77,11 +77,11 @@ func TestLikeRepository_Save_DuplicateLike(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -140,11 +140,11 @@ func TestLikeRepository_FindByTargetUserID_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー3人作成（user002が2人からいいねを受け取る）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	users := []*domain.User{
 		{
 			ID:           "user001",
@@ -231,11 +231,11 @@ func TestLikeRepository_FindByTargetUserID_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成（いいねを受け取っていない）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -266,7 +266,7 @@ func TestLikeRepository_FindByTargetUserID_EmptyUserID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のUserIDで検索
@@ -284,11 +284,11 @@ func TestLikeRepository_CheckMutual_MutualExists(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -353,11 +353,11 @@ func TestLikeRepository_CheckMutual_OnlyOneWay(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -413,11 +413,11 @@ func TestLikeRepository_CheckMutual_NoLikes(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成（いいねなし）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -462,11 +462,11 @@ func TestLikeRepository_FindByFromUserID_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー3人作成（user001が2人にいいねを送る）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	users := []*domain.User{
 		{
 			ID:           "user001",
@@ -553,11 +553,11 @@ func TestLikeRepository_FindByFromUserID_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成（いいねを送っていない）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -588,7 +588,7 @@ func TestLikeRepository_FindByFromUserID_EmptyUserID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewLikeRepository(td.DB)
+	repo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のUserIDで検索

@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestMatchRepository_Save_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -89,11 +89,11 @@ func TestMatchRepository_Save_DuplicateMatch(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -156,11 +156,11 @@ func TestMatchRepository_FindByUserID_AsUserIDA(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー3人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	users := []*domain.User{
 		{
 			ID:           "user001",
@@ -251,11 +251,11 @@ func TestMatchRepository_FindByUserID_AsUserIDB(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー3人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	users := []*domain.User{
 		{
 			ID:           "user001",
@@ -346,11 +346,11 @@ func TestMatchRepository_FindByUserID_Mixed(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー3人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	users := []*domain.User{
 		{
 			ID:           "user001",
@@ -441,11 +441,11 @@ func TestMatchRepository_FindByUserID_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成（マッチなし）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -476,12 +476,12 @@ func TestMatchRepository_FindMutual_MutualExists(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMatchRepository(td.DB)
-	likeRepo := NewLikeRepository(td.DB)
+	matchRepo := NewMatchRepository(td.Pool)
+	likeRepo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -566,12 +566,12 @@ func TestMatchRepository_FindMutual_OnlyOneWayLike(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMatchRepository(td.DB)
-	likeRepo := NewLikeRepository(td.DB)
+	matchRepo := NewMatchRepository(td.Pool)
+	likeRepo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -640,11 +640,11 @@ func TestMatchRepository_FindMutual_NoLikes(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMatchRepository(td.DB)
+	matchRepo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー2人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user1 := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",
@@ -702,12 +702,12 @@ func TestMatchRepository_FindMutual_MultipleMatches(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	matchRepo := NewMatchRepository(td.DB)
-	likeRepo := NewLikeRepository(td.DB)
+	matchRepo := NewMatchRepository(td.Pool)
+	likeRepo := NewLikeRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー3人作成
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	users := []*domain.User{
 		{
 			ID:           "user001",
@@ -825,11 +825,11 @@ func TestMatchRepository_FindMutual_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewMatchRepository(td.DB)
+	repo := NewMatchRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成（マッチなし）
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	user := &domain.User{
 		ID:           "user001",
 		Nickname:     "user001",

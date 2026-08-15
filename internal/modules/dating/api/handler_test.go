@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/application"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/application"
 )
 
 func TestNewHandler(t *testing.T) {

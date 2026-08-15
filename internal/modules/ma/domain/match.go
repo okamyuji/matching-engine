@@ -1,22 +1,16 @@
 package domain
 
-import (
-	"time"
-
-	"github.com/uptrace/bun"
-)
+import "time"
 
 // MAMatch M&Aマッチエンティティ
 type MAMatch struct {
-	bun.BaseModel `bun:"table:ma_matches"`
-
-	ID             string             `bun:"id,pk"`
-	CompanyIDA     string             `bun:"company_id_a,notnull"`
-	CompanyIDB     string             `bun:"company_id_b,notnull"`
-	Score          float64            `bun:"score,notnull"`
-	Breakdown      map[string]float64 `bun:"breakdown,type:json"`
-	SynergySummary *SynergySummary    `bun:"synergy_summary,type:json"`
-	MatchedAt      time.Time          `bun:"matched_at,nullzero,default:current_timestamp"`
+	ID             string
+	CompanyIDA     string
+	CompanyIDB     string
+	Score          float64
+	Breakdown      map[string]float64
+	SynergySummary *SynergySummary
+	MatchedAt      time.Time
 }
 
 // SynergySummary シナジーサマリー
@@ -30,10 +24,8 @@ type SynergySummary struct {
 
 // Interest M&A興味表明エンティティ
 type Interest struct {
-	bun.BaseModel `bun:"table:ma_interests"`
-
-	ID            string    `bun:"id,pk"`
-	FromCompanyID string    `bun:"from_company_id,notnull"`
-	ToCompanyID   string    `bun:"to_company_id,notnull"`
-	CreatedAt     time.Time `bun:"created_at,nullzero,default:current_timestamp"`
+	ID            string
+	FromCompanyID string
+	ToCompanyID   string
+	CreatedAt     time.Time
 }

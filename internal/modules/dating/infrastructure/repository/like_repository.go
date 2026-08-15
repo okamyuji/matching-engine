@@ -4,17 +4,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/uptrace/bun"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository/sqlcgen"
 )
 
 // Like あるユーザーから別のユーザーへのいいね
 type Like struct {
-	bun.BaseModel `bun:"table:dating_likes"`
-
-	ID         string    `bun:"id,pk"`
-	FromUserID string    `bun:"from_user_id,notnull"`
-	ToUserID   string    `bun:"to_user_id,notnull"`
-	CreatedAt  time.Time `bun:"created_at,notnull"`
+	ID         string
+	FromUserID string
+	ToUserID   string
+	CreatedAt  time.Time
 }
 
 // LikeRepository いいねデータアクセス用インターフェース
@@ -25,65 +23,68 @@ type LikeRepository interface {
 	FindByFromUserID(ctx context.Context, fromUserID string) ([]*Like, error)
 }
 
-// likeRepository LikeRepositoryのBUN実装
+// likeRepository LikeRepository の sqlc 実装
 type likeRepository struct {
-	db *bun.DB
+	q *sqlcgen.Queries
 }
 
-// NewLikeRepository 新しいLikeRepositoryを作成する
-func NewLikeRepository(db *bun.DB) LikeRepository {
-	return &likeRepository{db: db}
+// NewLikeRepository 新しい LikeRepository を作成する
+func NewLikeRepository(db DB) LikeRepository {
+	return &likeRepository{q: sqlcgen.New(db)}
 }
 
 // Save 新しいいいねを挿入する
 func (r *likeRepository) Save(ctx context.Context, like *Like) error {
-	_, err := r.db.NewInsert().
-		Model(like).
-		Exec(ctx)
-	return err
+	createdAt := like.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+	return r.q.InsertLike(ctx, sqlcgen.InsertLikeParams{
+		ID:         like.ID,
+		FromUserID: like.FromUserID,
+		ToUserID:   like.ToUserID,
+		CreatedAt:  createdAt,
+	})
 }
 
-// FindByTargetUserID ユーザーが受け取った全てのいいねを取得する
+// FindByTargetUserID ユーザーが受け取った全てのいいねを新しい順に取得する
 func (r *likeRepository) FindByTargetUserID(ctx context.Context, targetUserID string) ([]*Like, error) {
-	var likes []*Like
-	err := r.db.NewSelect().
-		Model(&likes).
-		Where("to_user_id = ?", targetUserID).
-		Order("created_at DESC").
-		Scan(ctx)
-	return likes, err
+	rows, err := r.q.ListLikesByToUser(ctx, targetUserID)
+	if err != nil {
+		return nil, err
+	}
+	return likesFromRows(rows), nil
 }
 
 // CheckMutual 2人のユーザー間に相互いいねが存在するかチェックする
 func (r *likeRepository) CheckMutual(ctx context.Context, userA, userB string) (bool, error) {
-	// ユーザーAがユーザーBにいいねしているかチェック
-	countAB, err := r.db.NewSelect().
-		Model((*Like)(nil)).
-		Where("from_user_id = ? AND to_user_id = ?", userA, userB).
-		Count(ctx)
+	ab, err := r.q.LikeExists(ctx, sqlcgen.LikeExistsParams{FromUserID: userA, ToUserID: userB})
 	if err != nil {
 		return false, err
 	}
-
-	// ユーザーBがユーザーAにいいねしているかチェック
-	countBA, err := r.db.NewSelect().
-		Model((*Like)(nil)).
-		Where("from_user_id = ? AND to_user_id = ?", userB, userA).
-		Count(ctx)
+	if !ab {
+		return false, nil
+	}
+	ba, err := r.q.LikeExists(ctx, sqlcgen.LikeExistsParams{FromUserID: userB, ToUserID: userA})
 	if err != nil {
 		return false, err
 	}
-
-	return countAB > 0 && countBA > 0, nil
+	return ba, nil
 }
 
-// FindByFromUserID ユーザーが送った全てのいいねを取得する
+// FindByFromUserID ユーザーが送った全てのいいねを新しい順に取得する
 func (r *likeRepository) FindByFromUserID(ctx context.Context, fromUserID string) ([]*Like, error) {
-	var likes []*Like
-	err := r.db.NewSelect().
-		Model(&likes).
-		Where("from_user_id = ?", fromUserID).
-		Order("created_at DESC").
-		Scan(ctx)
-	return likes, err
+	rows, err := r.q.ListLikesByFromUser(ctx, fromUserID)
+	if err != nil {
+		return nil, err
+	}
+	return likesFromRows(rows), nil
+}
+
+func likesFromRows(rows []sqlcgen.DatingLike) []*Like {
+	likes := make([]*Like, 0, len(rows))
+	for _, row := range rows {
+		likes = append(likes, &Like{ID: row.ID, FromUserID: row.FromUserID, ToUserID: row.ToUserID, CreatedAt: row.CreatedAt})
+	}
+	return likes
 }

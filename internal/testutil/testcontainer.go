@@ -1,262 +1,375 @@
+// Package testutil テスト用の PostgreSQL 環境を提供する。
+//
+// コンテナはテストごとに起動・終了せず、名前付きで再利用する（WithReuseByName）。
+// 複数のテストプロセス（go test ./... の各パッケージ）が同時に同じコンテナを共有できるよう、
+// マイグレーション済みのテンプレートDBを一度だけ作り、プロセスごとに
+// CREATE DATABASE ... TEMPLATE で独立したDBを払い出す。テーブルの初期化やシード投入は
+// 払い出したDBの中だけで行うため、パッケージ間で干渉しない。
 package testutil
 
 import (
 	"context"
-	"database/sql"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/testcontainers/testcontainers-go/modules/mysql"
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/mysqldialect"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-var (
-	sharedContainer *mysql.MySQLContainer
-	sharedDB        *bun.DB
-	containerMutex  sync.Mutex
-	containerOnce   sync.Once
+const (
+	// PostgresImage テストで使う PostgreSQL のイメージ
+	PostgresImage = "postgres:18-alpine"
+	// containerName 再利用するコンテナ名。同名のコンテナがあればそれを使う
+	containerName = "matching-engine-pg18-test"
+	// templateDBName マイグレーション済みテンプレートDB
+	templateDBName = "matching_template"
+	// adminDBName 管理操作に使う既定DB
+	adminDBName = "postgres"
+	// advisoryLockKey テンプレート作成とテストDB払い出しを直列化するロック
+	advisoryLockKey = 727272
+	// staleTestDBAge この時間より古いテストDBは起動時に破棄する
+	staleTestDBAge = 30 * time.Minute
+
+	dbUser     = "test"
+	dbPassword = "test"
 )
 
 // TestDatabase テストデータベース情報
 type TestDatabase struct {
-	Container *mysql.MySQLContainer
-	DB        *bun.DB
-	DSN       string
+	// Pool このプロセス専用のテストDBへのプール
+	Pool *pgxpool.Pool
+	// DSN このプロセス専用のテストDBへの接続文字列
+	DSN string
+	// DBName 払い出したDB名
+	DBName string
 }
 
-// GetSharedTestDB 共有テストデータベースを取得する
-// すべてのテストで同じコンテナを使用するため、起動コストを削減
+var (
+	sharedMu   sync.Mutex
+	sharedOnce sync.Once
+	sharedDB   *TestDatabase
+	sharedErr  error
+)
+
+// GetSharedTestDB プロセス内で共有するテストDBを返す。初回だけコンテナの起動（または再利用）、
+// テンプレートDBの準備、プロセス専用DBの払い出しを行う。
 func GetSharedTestDB(t *testing.T) *TestDatabase {
 	t.Helper()
-	containerMutex.Lock()
-	defer containerMutex.Unlock()
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
 
-	// 既に初期化済みならそのまま返す
-	if sharedDB != nil && sharedContainer != nil {
-		return &TestDatabase{
-			Container: sharedContainer,
-			DB:        sharedDB,
-			DSN:       buildDSN(t, sharedContainer),
-		}
-	}
-
-	// 初回のみコンテナを起動
-	containerOnce.Do(func() {
-		ctx := context.Background()
-
-		// MySQLコンテナ起動
-		container, err := mysql.Run(ctx,
-			"mysql:8.0",
-			mysql.WithDatabase("testdb"),
-			mysql.WithUsername("testuser"),
-			mysql.WithPassword("testpass"),
-		)
-		if err != nil {
-			t.Fatalf("MySQLコンテナ起動失敗: %v", err)
-		}
-
-		// DSN取得
-		dsn := buildDSN(t, container)
-
-		// データベース接続
-		sqldb, err := sql.Open("mysql", dsn)
-		if err != nil {
-			if termErr := container.Terminate(ctx); termErr != nil {
-				t.Logf("コンテナ終了警告: %v", termErr)
-			}
-			t.Fatalf("データベース接続失敗: %v", err)
-		}
-
-		// 接続プール設定
-		sqldb.SetMaxOpenConns(10)
-		sqldb.SetMaxIdleConns(5)
-		sqldb.SetConnMaxLifetime(5 * time.Minute)
-
-		// BUN初期化
-		db := bun.NewDB(sqldb, mysqldialect.New())
-
-		// 接続テスト（リトライあり）
-		if err := waitForDB(db, 30*time.Second); err != nil {
-			if closeErr := sqldb.Close(); closeErr != nil {
-				t.Logf("データベースクローズ警告: %v", closeErr)
-			}
-			if termErr := container.Terminate(ctx); termErr != nil {
-				t.Logf("コンテナ終了警告: %v", termErr)
-			}
-			t.Fatalf("データベース接続待機失敗: %v", err)
-		}
-
-		// マイグレーション実行
-		if err := runMigrations(db); err != nil {
-			if closeErr := db.Close(); closeErr != nil {
-				t.Logf("データベースクローズ警告: %v", closeErr)
-			}
-			if termErr := container.Terminate(ctx); termErr != nil {
-				t.Logf("コンテナ終了警告: %v", termErr)
-			}
-			t.Fatalf("マイグレーション実行失敗: %v", err)
-		}
-
-		sharedContainer = container
-		sharedDB = db
-
-		// Ryukが自動的にコンテナをクリーンアップするため、明示的なCleanupは不要
+	sharedOnce.Do(func() {
+		sharedDB, sharedErr = setup(context.Background())
 	})
-
-	return &TestDatabase{
-		Container: sharedContainer,
-		DB:        sharedDB,
-		DSN:       buildDSN(t, sharedContainer),
+	if sharedErr != nil {
+		t.Fatalf("テストDB準備失敗: %v", sharedErr)
 	}
+	return sharedDB
 }
 
-// CleanTables テーブルデータをクリーンアップする
+// CleanTables 全テーブルのデータを削除する（スキーマは残す）
 func (td *TestDatabase) CleanTables(t *testing.T) {
 	t.Helper()
-
 	ctx := context.Background()
-	// 外部キー制約を考慮した順序で削除
-	tables := []string{
-		// Dating tables
-		"dating_matches",
-		"dating_likes",
-		"dating_profile_tags",
-		"dating_profile_photos",
-		"dating_preference_prefectures",
-		"dating_preference_educations",
-		"dating_preference_marriage_desires",
-		"dating_preference_smoking_statuses",
-		"dating_preference_drinking_statuses",
-		"dating_preferences",
-		"dating_profiles",
-		"dating_users",
-		// M&A tables
-		"ma_matches",
-		"ma_interests",
-		"ma_company_markets",
-		"ma_company_technologies",
-		"ma_criteria_industries",
-		"ma_matching_criteria",
-		"ma_financials",
-		"ma_companies",
-	}
-
-	for _, table := range tables {
-		_, err := td.DB.NewRaw(fmt.Sprintf("DELETE FROM %s", table)).Exec(ctx)
-		if err != nil {
-			t.Logf("テーブル %s のクリーンアップ警告: %v", table, err)
-		}
+	if err := TruncateAll(ctx, td.Pool); err != nil {
+		t.Fatalf("テーブル初期化失敗: %v", err)
 	}
 }
 
-// SeedTestData テストデータを投入する
+// SeedTestData テストデータを投入する（先に全テーブルを空にする）
 func (td *TestDatabase) SeedTestData(t *testing.T) {
 	t.Helper()
-
-	// まずクリーンアップ
 	td.CleanTables(t)
 
-	// 複数の可能なパスを試す
-	possiblePaths := []string{
-		"db/testdata/seed.sql",
-		"../../db/testdata/seed.sql",
-		"../../../db/testdata/seed.sql",
-		"../../../../db/testdata/seed.sql",
-		"../../../../../db/testdata/seed.sql",
-		"../../../../../../db/testdata/seed.sql",
+	seedPath, err := repoFile("db", "testdata", "seed.sql")
+	if err != nil {
+		t.Fatalf("シードデータのパス解決失敗: %v", err)
 	}
-
-	var seedSQL []byte
-	var err error
-	for _, path := range possiblePaths {
-		seedSQL, err = os.ReadFile(path)
-		if err == nil {
-			break
-		}
-	}
+	seedSQL, err := os.ReadFile(seedPath) //nolint:gosec // テスト内で固定パスを読む
 	if err != nil {
 		t.Fatalf("シードデータ読み込み失敗: %v", err)
 	}
-
-	ctx := context.Background()
-	_, err = td.DB.ExecContext(ctx, string(seedSQL))
-	if err != nil {
+	if _, err := td.Pool.Exec(context.Background(), string(seedSQL)); err != nil {
 		t.Fatalf("シードデータ投入失敗: %v", err)
 	}
 }
 
-// buildDSN DSN文字列を構築する
-func buildDSN(t *testing.T, container *mysql.MySQLContainer) string {
-	t.Helper()
-
-	ctx := context.Background()
-	host, err := container.Host(ctx)
+// TruncateAll public スキーマの全テーブルを TRUNCATE する
+func TruncateAll(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
 	if err != nil {
-		t.Fatalf("コンテナホスト取得失敗: %v", err)
+		return fmt.Errorf("list tables: %w", err)
 	}
-
-	port, err := container.MappedPort(ctx, "3306/tcp")
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan table name: %w", err)
+		}
+		tables = append(tables, pgx.Identifier{name}.Sanitize())
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate tables: %w", err)
+	}
+	if len(tables) == 0 {
+		return nil
+	}
+	_, err = pool.Exec(ctx, "TRUNCATE TABLE "+strings.Join(tables, ", ")+" RESTART IDENTITY CASCADE")
 	if err != nil {
-		t.Fatalf("コンテナポート取得失敗: %v", err)
+		return fmt.Errorf("truncate: %w", err)
 	}
-
-	return fmt.Sprintf("testuser:testpass@tcp(%s:%s)/testdb?parseTime=true&multiStatements=true", host, port.Port())
+	return nil
 }
 
-// waitForDB データベース接続を待機する
-func waitForDB(db *bun.DB, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("データベース接続タイムアウト")
-		case <-ticker.C:
-			if err := db.PingContext(ctx); err == nil {
-				return nil
-			}
-		}
+// setup コンテナとDBを準備する
+func setup(ctx context.Context) (*TestDatabase, error) {
+	adminDSN, err := startOrReuseContainer(ctx)
+	if err != nil {
+		return nil, err
 	}
+
+	migrationPath, err := repoFile("db", "migrations", "001_create_tables.sql")
+	if err != nil {
+		return nil, err
+	}
+	migrationSQL, err := os.ReadFile(migrationPath) //nolint:gosec // テスト内で固定パスを読む
+	if err != nil {
+		return nil, fmt.Errorf("マイグレーション読み込み失敗: %w", err)
+	}
+
+	admin, err := connectWithRetry(ctx, adminDSN, 60*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	defer admin.Close(ctx)
+
+	// テンプレート作成とDB払い出しは advisory lock で直列化する。
+	// CREATE DATABASE ... TEMPLATE はテンプレートへの接続が無いことを要求するため、
+	// テンプレートへの接続はロック内で閉じてから払い出す。
+	if _, err := admin.Exec(ctx, "SELECT pg_advisory_lock($1)", advisoryLockKey); err != nil {
+		return nil, fmt.Errorf("advisory lock: %w", err)
+	}
+	defer func() { _, _ = admin.Exec(ctx, "SELECT pg_advisory_unlock($1)", advisoryLockKey) }()
+
+	if err := ensureTemplate(ctx, admin, adminDSN, migrationSQL); err != nil {
+		return nil, err
+	}
+	dropStaleTestDBs(ctx, admin)
+
+	dbName := newTestDBName()
+	if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s",
+		pgx.Identifier{dbName}.Sanitize(), pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+		return nil, fmt.Errorf("create test database: %w", err)
+	}
+
+	dsn := replaceDatabase(adminDSN, dbName)
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("pool: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping test database: %w", err)
+	}
+	return &TestDatabase{Pool: pool, DSN: dsn, DBName: dbName}, nil
 }
 
-// runMigrations マイグレーションを実行する
-func runMigrations(db *bun.DB) error {
-	// 複数の可能なパスを試す
-	possiblePaths := []string{
-		"db/migrations/001_create_tables.sql",
-		"../../db/migrations/001_create_tables.sql",
-		"../../../db/migrations/001_create_tables.sql",
-		"../../../../db/migrations/001_create_tables.sql",
-		"../../../../../db/migrations/001_create_tables.sql",
-		"../../../../../../db/migrations/001_create_tables.sql",
+// startOrReuseContainer コンテナを起動または再利用し、管理DBへのDSNを返す
+func startOrReuseContainer(ctx context.Context) (string, error) {
+	if dsn := os.Getenv("TEST_DATABASE_ADMIN_DSN"); dsn != "" {
+		// 既存の PostgreSQL（CI のサービスコンテナなど）を使う
+		return dsn, nil
 	}
 
-	var migrationSQL []byte
-	var err error
-	for _, path := range possiblePaths {
-		migrationSQL, err = os.ReadFile(path)
-		if err == nil {
-			break
+	reuse := os.Getenv("TESTCONTAINERS_REUSE") != "false"
+	if reuse {
+		// 再利用コンテナは Ryuk に回収させない（プロセス終了後も残して次回に使う）
+		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+	}
+
+	opts := []testcontainers.ContainerCustomizer{
+		postgres.WithDatabase(adminDBName),
+		postgres.WithUsername(dbUser),
+		postgres.WithPassword(dbPassword),
+		postgres.BasicWaitStrategies(),
+	}
+	if reuse {
+		opts = append(opts, testcontainers.WithReuseByName(containerName))
+	}
+	ctr, err := postgres.Run(ctx, PostgresImage, opts...)
+	if err != nil {
+		return "", fmt.Errorf("PostgreSQLコンテナ起動失敗: %w", err)
+	}
+	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		return "", fmt.Errorf("接続文字列取得失敗: %w", err)
+	}
+	return dsn, nil
+}
+
+// ensureTemplate マイグレーション済みテンプレートDBを用意する。マイグレーションのハッシュが
+// 変わっていれば作り直す。
+func ensureTemplate(ctx context.Context, admin *pgx.Conn, adminDSN string, migrationSQL []byte) error {
+	sum := sha256.Sum256(migrationSQL)
+	wantHash := hex.EncodeToString(sum[:])
+
+	var exists bool
+	if err := admin.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)", templateDBName).Scan(&exists); err != nil {
+		return fmt.Errorf("check template: %w", err)
+	}
+	if exists {
+		gotHash, err := readTemplateHash(ctx, replaceDatabase(adminDSN, templateDBName))
+		if err == nil && gotHash == wantHash {
+			return nil
+		}
+		// 古いテンプレートは作り直す
+		if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE false", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+			return fmt.Errorf("unmark template: %w", err)
+		}
+		if _, err := admin.Exec(ctx, fmt.Sprintf("DROP DATABASE %s WITH (FORCE)", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+			return fmt.Errorf("drop stale template: %w", err)
 		}
 	}
-	if err != nil {
-		return fmt.Errorf("マイグレーションファイル読み込み失敗: %w", err)
-	}
 
-	ctx := context.Background()
-	_, err = db.ExecContext(ctx, string(migrationSQL))
+	if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+		return fmt.Errorf("create template: %w", err)
+	}
+	tconn, err := pgx.Connect(ctx, replaceDatabase(adminDSN, templateDBName))
 	if err != nil {
+		return fmt.Errorf("connect template: %w", err)
+	}
+	if _, err := tconn.Exec(ctx, string(migrationSQL)); err != nil {
+		_ = tconn.Close(ctx)
 		return fmt.Errorf("マイグレーション実行失敗: %w", err)
 	}
-
+	if _, err := tconn.Exec(ctx, "CREATE TABLE schema_meta (migration_hash text NOT NULL)"); err != nil {
+		_ = tconn.Close(ctx)
+		return fmt.Errorf("create schema_meta: %w", err)
+	}
+	if _, err := tconn.Exec(ctx, "INSERT INTO schema_meta (migration_hash) VALUES ($1)", wantHash); err != nil {
+		_ = tconn.Close(ctx)
+		return fmt.Errorf("record migration hash: %w", err)
+	}
+	if err := tconn.Close(ctx); err != nil {
+		return fmt.Errorf("close template conn: %w", err)
+	}
+	if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE true", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+		return fmt.Errorf("mark template: %w", err)
+	}
 	return nil
+}
+
+func readTemplateHash(ctx context.Context, dsn string) (string, error) {
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close(ctx)
+	var hash string
+	err = conn.QueryRow(ctx, "SELECT migration_hash FROM schema_meta LIMIT 1").Scan(&hash)
+	return hash, err
+}
+
+// dropStaleTestDBs 名前に埋め込んだ作成時刻が古く、接続の無いテストDBを削除する
+func dropStaleTestDBs(ctx context.Context, admin *pgx.Conn) {
+	rows, err := admin.Query(ctx, `
+		SELECT d.datname FROM pg_database d
+		WHERE d.datname LIKE 'test\_%'
+		  AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = d.datname)`)
+	if err != nil {
+		return
+	}
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err == nil {
+			names = append(names, n)
+		}
+	}
+	rows.Close()
+	cutoff := time.Now().Add(-staleTestDBAge).Unix()
+	for _, n := range names {
+		parts := strings.Split(n, "_")
+		if len(parts) < 3 {
+			continue
+		}
+		created, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || created > cutoff {
+			continue
+		}
+		_, _ = admin.Exec(ctx, fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE)", pgx.Identifier{n}.Sanitize()))
+	}
+}
+
+func newTestDBName() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("test_%d_%s", time.Now().Unix(), hex.EncodeToString(b))
+}
+
+// replaceDatabase DSN のデータベース名部分を置き換える
+func replaceDatabase(dsn, dbName string) string {
+	// 形式: postgres://user:pass@host:port/dbname?params
+	q := ""
+	base := dsn
+	if i := strings.Index(dsn, "?"); i >= 0 {
+		base, q = dsn[:i], dsn[i:]
+	}
+	slash := strings.LastIndex(base, "/")
+	if slash < 0 {
+		return dsn
+	}
+	return base[:slash+1] + dbName + q
+}
+
+func connectWithRetry(ctx context.Context, dsn string, timeout time.Duration) (*pgx.Conn, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := pgx.Connect(ctx, dsn)
+		if err == nil {
+			if pingErr := conn.Ping(ctx); pingErr == nil {
+				return conn, nil
+			}
+			_ = conn.Close(ctx)
+		}
+		lastErr = err
+		time.Sleep(500 * time.Millisecond)
+	}
+	if lastErr == nil {
+		lastErr = errors.New("timeout")
+	}
+	return nil, fmt.Errorf("データベース接続待機失敗: %w", lastErr)
+}
+
+// repoFile リポジトリルート（go.mod のある場所）からの相対パスを解決する
+func repoFile(parts ...string) (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(append([]string{dir}, parts...)...), nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", errors.New("go.mod が見つかりません")
+		}
+		dir = parent
+	}
 }

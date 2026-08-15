@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestUserRepository_FindByID_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストデータ作成
@@ -56,7 +56,7 @@ func TestUserRepository_FindByID_UserNotFound(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しないユーザーIDで検索
@@ -70,7 +70,7 @@ func TestUserRepository_FindByID_EmptyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のIDで検索
@@ -84,7 +84,7 @@ func TestUserRepository_Create_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	user := &domain.User{
@@ -122,7 +122,7 @@ func TestUserRepository_Create_DuplicateID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	user := &domain.User{
@@ -166,7 +166,7 @@ func TestUserRepository_Create_MinimalFields(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 最小限の必須フィールドのみ
@@ -201,7 +201,7 @@ func TestUserRepository_Update_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストデータ作成
@@ -250,7 +250,7 @@ func TestUserRepository_Update_NonExistentUser(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しないユーザーを更新
@@ -283,7 +283,7 @@ func TestUserRepository_Update_PartialUpdate(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストデータ作成
@@ -332,7 +332,7 @@ func TestUserRepository_FindCandidates_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 検索ユーザー作成
@@ -384,7 +384,7 @@ func TestUserRepository_FindCandidates_NormalCase(t *testing.T) {
 		SelfIntroduction: "テストプロフィール",
 		UpdatedAt:        time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(profile).Exec(ctx)
+	err = NewProfileRepository(td.Pool).Upsert(ctx, profile)
 	if err != nil {
 		t.Fatalf("プロフィール作成失敗: %v", err)
 	}
@@ -427,7 +427,7 @@ func TestUserRepository_FindCandidates_EmptyPreferences(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 検索ユーザー作成
@@ -481,7 +481,7 @@ func TestUserRepository_FindCandidates_EmptyPreferences(t *testing.T) {
 			SelfIntroduction: "テスト",
 			UpdatedAt:        time.Now(),
 		}
-		_, err = td.DB.NewInsert().Model(profile).Exec(ctx)
+		err = NewProfileRepository(td.Pool).Upsert(ctx, profile)
 		if err != nil {
 			t.Fatalf("プロフィール%d作成失敗: %v", i, err)
 		}
@@ -507,7 +507,7 @@ func TestUserRepository_FindCandidates_AgeFilter(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 検索ユーザー作成
@@ -573,7 +573,7 @@ func TestUserRepository_FindCandidates_AgeFilter(t *testing.T) {
 			SelfIntroduction: "テスト",
 			UpdatedAt:        time.Now(),
 		}
-		_, err = td.DB.NewInsert().Model(profile).Exec(ctx)
+		err = NewProfileRepository(td.Pool).Upsert(ctx, profile)
 		if err != nil {
 			t.Fatalf("プロフィール%s作成失敗: %v", tc.id, err)
 		}
@@ -623,7 +623,7 @@ func TestUserRepository_FindCandidates_ExcludeSelf(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 検索ユーザー作成
@@ -658,7 +658,7 @@ func TestUserRepository_FindCandidates_ExcludeSelf(t *testing.T) {
 		SelfIntroduction: "テスト",
 		UpdatedAt:        time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(profile).Exec(ctx)
+	err = NewProfileRepository(td.Pool).Upsert(ctx, profile)
 	if err != nil {
 		t.Fatalf("プロフィール作成失敗: %v", err)
 	}
@@ -686,7 +686,7 @@ func TestUserRepository_FindCandidates_VerifiedOnly(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 検索ユーザー作成
@@ -737,7 +737,7 @@ func TestUserRepository_FindCandidates_VerifiedOnly(t *testing.T) {
 		SelfIntroduction: "テスト",
 		UpdatedAt:        time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(verifiedProfile).Exec(ctx)
+	err = NewProfileRepository(td.Pool).Upsert(ctx, verifiedProfile)
 	if err != nil {
 		t.Fatalf("認証済みユーザープロフィール作成失敗: %v", err)
 	}
@@ -773,7 +773,7 @@ func TestUserRepository_FindCandidates_VerifiedOnly(t *testing.T) {
 		SelfIntroduction: "テスト",
 		UpdatedAt:        time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(unverifiedProfile).Exec(ctx)
+	err = NewProfileRepository(td.Pool).Upsert(ctx, unverifiedProfile)
 	if err != nil {
 		t.Fatalf("未認証ユーザープロフィール作成失敗: %v", err)
 	}
@@ -811,7 +811,7 @@ func TestUserRepository_FindCandidates_MultipleFilters(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewUserRepository(td.DB)
+	repo := NewUserRepository(td.Pool)
 	ctx := context.Background()
 
 	// 検索ユーザー作成
@@ -862,7 +862,7 @@ func TestUserRepository_FindCandidates_MultipleFilters(t *testing.T) {
 		SelfIntroduction: "テスト",
 		UpdatedAt:        time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(matchProfile).Exec(ctx)
+	err = NewProfileRepository(td.Pool).Upsert(ctx, matchProfile)
 	if err != nil {
 		t.Fatalf("マッチプロフィール作成失敗: %v", err)
 	}
@@ -898,7 +898,7 @@ func TestUserRepository_FindCandidates_MultipleFilters(t *testing.T) {
 		SelfIntroduction: "テスト",
 		UpdatedAt:        time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(noMatchProfile).Exec(ctx)
+	err = NewProfileRepository(td.Pool).Upsert(ctx, noMatchProfile)
 	if err != nil {
 		t.Fatalf("非マッチプロフィール作成失敗: %v", err)
 	}

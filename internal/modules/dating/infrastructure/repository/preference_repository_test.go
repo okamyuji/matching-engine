@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestPreferenceRepository_FindByUserID_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -28,7 +28,7 @@ func TestPreferenceRepository_FindByUserID_NormalCase(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)
@@ -97,7 +97,7 @@ func TestPreferenceRepository_FindByUserID_EmptyRelations(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -112,7 +112,7 @@ func TestPreferenceRepository_FindByUserID_EmptyRelations(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)
@@ -155,7 +155,7 @@ func TestPreferenceRepository_FindByUserID_NotFound(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しないユーザーIDで検索
@@ -169,7 +169,7 @@ func TestPreferenceRepository_FindByUserID_EmptyUserID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のUserIDで検索
@@ -183,7 +183,7 @@ func TestPreferenceRepository_Upsert_Insert(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -198,7 +198,7 @@ func TestPreferenceRepository_Upsert_Insert(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)
@@ -264,7 +264,7 @@ func TestPreferenceRepository_Upsert_Update(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -279,7 +279,7 @@ func TestPreferenceRepository_Upsert_Update(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)
@@ -354,7 +354,7 @@ func TestPreferenceRepository_Upsert_MinimalFields(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -369,7 +369,7 @@ func TestPreferenceRepository_Upsert_MinimalFields(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)
@@ -408,7 +408,7 @@ func TestPreferenceRepository_Upsert_ClearRelations(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -423,7 +423,7 @@ func TestPreferenceRepository_Upsert_ClearRelations(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)
@@ -480,7 +480,7 @@ func TestPreferenceRepository_Upsert_Idempotent(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewPreferenceRepository(td.DB)
+	repo := NewPreferenceRepository(td.Pool)
 	ctx := context.Background()
 
 	// テストユーザー作成
@@ -495,7 +495,7 @@ func TestPreferenceRepository_Upsert_Idempotent(t *testing.T) {
 		CreatedAt:    time.Now(),
 		LastActiveAt: time.Now(),
 	}
-	userRepo := NewUserRepository(td.DB)
+	userRepo := NewUserRepository(td.Pool)
 	err := userRepo.Create(ctx, user)
 	if err != nil {
 		t.Fatalf("テストユーザー作成失敗: %v", err)

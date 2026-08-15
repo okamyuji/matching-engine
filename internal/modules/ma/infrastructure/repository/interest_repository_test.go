@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestInterestRepository_Save_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -82,8 +82,8 @@ func TestInterestRepository_Save_DuplicateInterest(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -149,8 +149,8 @@ func TestInterestRepository_FindByToCompany_MultipleInterests(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業3社作成（1社の売り手に対して2社の買い手が興味表明）
@@ -245,8 +245,8 @@ func TestInterestRepository_FindByToCompany_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成（興味表明を受けていない）
@@ -281,7 +281,7 @@ func TestInterestRepository_FindByToCompany_EmptyCompanyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のCompanyIDで検索
@@ -299,8 +299,8 @@ func TestInterestRepository_Exists_True(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -364,8 +364,8 @@ func TestInterestRepository_Exists_False(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業2社作成
@@ -417,7 +417,7 @@ func TestInterestRepository_Exists_EmptyCompanyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	intRepo := NewInterestRepository(td.DB)
+	intRepo := NewInterestRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のCompanyIDで存在チェック

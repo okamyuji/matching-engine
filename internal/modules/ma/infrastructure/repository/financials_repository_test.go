@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestFinancialsRepository_Save_Insert(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -80,8 +80,8 @@ func TestFinancialsRepository_Save_Update(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -152,8 +152,8 @@ func TestFinancialsRepository_FindByCompanyID_MultipleYears(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -222,8 +222,8 @@ func TestFinancialsRepository_FindByCompanyID_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成（財務情報なし）
@@ -259,8 +259,8 @@ func TestFinancialsRepository_FindLatest_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -322,7 +322,7 @@ func TestFinancialsRepository_FindLatest_NotFound(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しない企業IDで検索
@@ -336,7 +336,7 @@ func TestFinancialsRepository_FindLatest_EmptyCompanyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のCompanyIDで検索
@@ -350,8 +350,8 @@ func TestFinancialsRepository_Save_Idempotent(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	finRepo := NewFinancialsRepository(td.DB)
-	compRepo := NewCompanyRepository(td.DB)
+	finRepo := NewFinancialsRepository(td.Pool)
+	compRepo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成

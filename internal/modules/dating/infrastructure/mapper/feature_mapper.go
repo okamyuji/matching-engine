@@ -3,8 +3,8 @@ package mapper
 import (
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
 )
 
 // DatingFeatureMapper デートドメインモデルを特徴ベクトルに変換する

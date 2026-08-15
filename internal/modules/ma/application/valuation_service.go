@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
-	"github.com/yourorg/matching-engine/internal/modules/ma/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository"
 )
 
 // ValuationService バリュエーションサービス

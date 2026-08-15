@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestCompanyRepository_Create_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -59,7 +59,7 @@ func TestCompanyRepository_Create_DuplicateID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 1回目の企業作成
@@ -103,7 +103,7 @@ func TestCompanyRepository_FindByID_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -129,7 +129,7 @@ func TestCompanyRepository_FindByID_NormalCase(t *testing.T) {
 		CompanyID:  "company002",
 		Technology: "AI",
 	}
-	_, err = td.DB.NewInsert().Model(tech).Exec(ctx)
+	err = InsertTechnology(ctx, td.Pool, tech)
 	if err != nil {
 		t.Fatalf("Technology追加失敗: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestCompanyRepository_FindByID_NormalCase(t *testing.T) {
 		CompanyID: "company002",
 		Market:    "国内",
 	}
-	_, err = td.DB.NewInsert().Model(market).Exec(ctx)
+	err = InsertMarket(ctx, td.Pool, market)
 	if err != nil {
 		t.Fatalf("Market追加失敗: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestCompanyRepository_FindByID_NotFound(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しないIDで検索
@@ -179,7 +179,7 @@ func TestCompanyRepository_FindByID_EmptyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のIDで検索
@@ -193,7 +193,7 @@ func TestCompanyRepository_Update_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -244,7 +244,7 @@ func TestCompanyRepository_Update_NonExistentCompany(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しない企業を更新
@@ -271,7 +271,7 @@ func TestCompanyRepository_FindByPurpose_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 買い手企業を2社作成
@@ -340,7 +340,7 @@ func TestCompanyRepository_FindByPurpose_WithIndustryFilter(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// Technology業界の買い手を2社、Finance業界の買い手を1社作成
@@ -420,7 +420,7 @@ func TestCompanyRepository_FindByPurpose_WithEmployeeFilter(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 従業員数が異なる買い手を3社作成
@@ -496,7 +496,7 @@ func TestCompanyRepository_FindByPurpose_EmptyResult(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 売り手企業のみ作成
@@ -531,7 +531,7 @@ func TestCompanyRepository_FindCriteria_NormalCase(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// テスト企業作成
@@ -564,7 +564,7 @@ func TestCompanyRepository_FindCriteria_NormalCase(t *testing.T) {
 		MaxDebtEquityRatio: 1.5,
 		UpdatedAt:          time.Now(),
 	}
-	_, err = td.DB.NewInsert().Model(criteria).Exec(ctx)
+	err = UpsertCriteria(ctx, td.Pool, criteria)
 	if err != nil {
 		t.Fatalf("基準作成失敗: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestCompanyRepository_FindCriteria_NormalCase(t *testing.T) {
 		CompanyID: "company004",
 		Industry:  domain.IndustryTechnology,
 	}
-	_, err = td.DB.NewInsert().Model(industry).Exec(ctx)
+	err = InsertCriteriaIndustry(ctx, td.Pool, industry)
 	if err != nil {
 		t.Fatalf("TargetIndustry追加失敗: %v", err)
 	}
@@ -600,7 +600,7 @@ func TestCompanyRepository_FindCriteria_NotFound(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 存在しない企業IDで基準を検索
@@ -614,7 +614,7 @@ func TestCompanyRepository_FindCriteria_EmptyCompanyID(t *testing.T) {
 	td := testutil.GetSharedTestDB(t)
 	td.CleanTables(t)
 
-	repo := NewCompanyRepository(td.DB)
+	repo := NewCompanyRepository(td.Pool)
 	ctx := context.Background()
 
 	// 空のCompanyIDで基準を検索

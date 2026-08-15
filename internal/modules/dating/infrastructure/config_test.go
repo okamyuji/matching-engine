@@ -3,7 +3,7 @@ package infrastructure
 import (
 	"testing"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
 )
 
 func TestLoadDatingConfig(t *testing.T) {
