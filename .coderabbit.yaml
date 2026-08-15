@@ -1,0 +1,10 @@
+# CodeRabbit 設定
+# 生成コード（sqlc）とデータ・環境サンプルはレビュー対象から外す
+language: "ja-JP"
+reviews:
+  path_filters:
+    - "!**/sqlcgen/**"
+    - "!db/testdata/**"
+    - "!.env.example"
+    - "!.gitignore"
+    - "!compose.yaml"
