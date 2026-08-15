@@ -86,7 +86,7 @@ func matchesFromRows(rows []sqlcgen.DatingMatch) ([]*domain.Match, error) {
 
 func marshalBreakdown(b map[string]float64) ([]byte, error) {
 	if b == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // 内訳なしは NULL として保存する
 	}
 	data, err := json.Marshal(b)
 	if err != nil {
@@ -97,7 +97,7 @@ func marshalBreakdown(b map[string]float64) ([]byte, error) {
 
 func unmarshalBreakdown(data []byte) (map[string]float64, error) {
 	if len(data) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // 内訳なし（NULL）は正常系
 	}
 	var b map[string]float64
 	if err := json.Unmarshal(data, &b); err != nil {

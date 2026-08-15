@@ -108,7 +108,7 @@ func maMatchFromRow(row sqlcgen.MaMatch) (*domain.MAMatch, error) {
 
 func marshalJSON(v map[string]float64) ([]byte, error) {
 	if v == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // 内訳なしは NULL として保存する
 	}
 	return json.Marshal(v)
 }

@@ -58,3 +58,15 @@ func TestSecretFromEnv(t *testing.T) {
 		t.Error("環境変数の秘密鍵が返るべき")
 	}
 }
+
+func TestVerify_ExpZeroMeansNoExpiry(t *testing.T) {
+	secret := []byte("s3cret")
+	tok, _ := Sign(secret, map[string]any{"user_id": "u1", "exp": 0})
+	if _, err := Verify(secret, tok); err != nil {
+		t.Errorf("exp=0 は有効期限なしとして扱うべき: %v", err)
+	}
+	future, _ := Sign(secret, map[string]any{"user_id": "u1", "exp": time.Now().Add(2 * time.Second).Unix()})
+	if _, err := Verify(secret, future); err != nil {
+		t.Errorf("未来の exp は有効: %v", err)
+	}
+}

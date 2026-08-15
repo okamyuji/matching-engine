@@ -267,7 +267,7 @@ func TestUserRepository_Update_NonExistentUser(t *testing.T) {
 	}
 
 	err := repo.Update(ctx, user)
-	// UPDATE は対象行が無くてもエラーにならない（更新件数0で正常終了する）
+	// 対象行が無い UPDATE はエラーにならない（更新件数0で正常終了する）
 	if err != nil {
 		t.Logf("Update実行: %v", err)
 	}

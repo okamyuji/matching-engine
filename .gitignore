@@ -219,3 +219,4 @@ __debug_bin
 # Air (ホットリロードツール)
 tmp/
 .air.toml.local
+coverage.filtered.out

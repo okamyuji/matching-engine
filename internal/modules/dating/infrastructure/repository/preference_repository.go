@@ -98,46 +98,61 @@ func (r *preferenceRepository) Upsert(ctx context.Context, pref *domain.Preferen
 	}); err != nil {
 		return err
 	}
-
-	if err := q.DeletePreferencePrefectures(ctx, pref.UserID); err != nil {
-		return err
-	}
-	for _, p := range pref.Prefectures {
-		if _, err := q.InsertPreferencePrefecture(ctx, sqlcgen.InsertPreferencePrefectureParams{UserID: pref.UserID, Prefecture: string(p.Prefecture)}); err != nil {
-			return err
-		}
-	}
-	if err := q.DeletePreferenceEducations(ctx, pref.UserID); err != nil {
-		return err
-	}
-	for _, e := range pref.Educations {
-		if _, err := q.InsertPreferenceEducation(ctx, sqlcgen.InsertPreferenceEducationParams{UserID: pref.UserID, Education: string(e.Education)}); err != nil {
-			return err
-		}
-	}
-	if err := q.DeletePreferenceMarriageDesires(ctx, pref.UserID); err != nil {
-		return err
-	}
-	for _, m := range pref.MarriageDesires {
-		if _, err := q.InsertPreferenceMarriageDesire(ctx, sqlcgen.InsertPreferenceMarriageDesireParams{UserID: pref.UserID, MarriageDesire: string(m.MarriageDesire)}); err != nil {
-			return err
-		}
-	}
-	if err := q.DeletePreferenceSmokingStatuses(ctx, pref.UserID); err != nil {
-		return err
-	}
-	for _, s := range pref.SmokingStatuses {
-		if _, err := q.InsertPreferenceSmokingStatus(ctx, sqlcgen.InsertPreferenceSmokingStatusParams{UserID: pref.UserID, SmokingStatus: string(s.SmokingStatus)}); err != nil {
-			return err
-		}
-	}
-	if err := q.DeletePreferenceDrinkingStatuses(ctx, pref.UserID); err != nil {
-		return err
-	}
-	for _, d := range pref.DrinkingStatuses {
-		if _, err := q.InsertPreferenceDrinkingStatus(ctx, sqlcgen.InsertPreferenceDrinkingStatusParams{UserID: pref.UserID, DrinkingStatus: string(d.DrinkingStatus)}); err != nil {
+	for _, step := range preferenceChildSteps(q, pref) {
+		if err := step(ctx); err != nil {
 			return err
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// preferenceChildSteps 詳細条件（都道府県・学歴・結婚意向・喫煙・飲酒）を
+// 「全削除→再挿入」で置き換える手順を返す
+func preferenceChildSteps(q *sqlcgen.Queries, pref *domain.Preference) []func(context.Context) error {
+	uid := pref.UserID
+	return []func(context.Context) error{
+		func(ctx context.Context) error {
+			return replaceChildren(ctx, func() error { return q.DeletePreferencePrefectures(ctx, uid) }, len(pref.Prefectures), func(i int) error {
+				_, err := q.InsertPreferencePrefecture(ctx, sqlcgen.InsertPreferencePrefectureParams{UserID: uid, Prefecture: string(pref.Prefectures[i].Prefecture)})
+				return err
+			})
+		},
+		func(ctx context.Context) error {
+			return replaceChildren(ctx, func() error { return q.DeletePreferenceEducations(ctx, uid) }, len(pref.Educations), func(i int) error {
+				_, err := q.InsertPreferenceEducation(ctx, sqlcgen.InsertPreferenceEducationParams{UserID: uid, Education: string(pref.Educations[i].Education)})
+				return err
+			})
+		},
+		func(ctx context.Context) error {
+			return replaceChildren(ctx, func() error { return q.DeletePreferenceMarriageDesires(ctx, uid) }, len(pref.MarriageDesires), func(i int) error {
+				_, err := q.InsertPreferenceMarriageDesire(ctx, sqlcgen.InsertPreferenceMarriageDesireParams{UserID: uid, MarriageDesire: string(pref.MarriageDesires[i].MarriageDesire)})
+				return err
+			})
+		},
+		func(ctx context.Context) error {
+			return replaceChildren(ctx, func() error { return q.DeletePreferenceSmokingStatuses(ctx, uid) }, len(pref.SmokingStatuses), func(i int) error {
+				_, err := q.InsertPreferenceSmokingStatus(ctx, sqlcgen.InsertPreferenceSmokingStatusParams{UserID: uid, SmokingStatus: string(pref.SmokingStatuses[i].SmokingStatus)})
+				return err
+			})
+		},
+		func(ctx context.Context) error {
+			return replaceChildren(ctx, func() error { return q.DeletePreferenceDrinkingStatuses(ctx, uid) }, len(pref.DrinkingStatuses), func(i int) error {
+				_, err := q.InsertPreferenceDrinkingStatus(ctx, sqlcgen.InsertPreferenceDrinkingStatusParams{UserID: uid, DrinkingStatus: string(pref.DrinkingStatuses[i].DrinkingStatus)})
+				return err
+			})
+		},
+	}
+}
+
+// replaceChildren 子行を全削除してから n 件を挿入する
+func replaceChildren(_ context.Context, del func() error, n int, insert func(i int) error) error {
+	if err := del(); err != nil {
+		return err
+	}
+	for i := 0; i < n; i++ {
+		if err := insert(i); err != nil {
+			return err
+		}
+	}
+	return nil
 }

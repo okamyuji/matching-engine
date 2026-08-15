@@ -3,7 +3,9 @@ package database
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,21 +24,20 @@ type Config struct {
 	ConnMaxLifetime time.Duration
 }
 
-// DSN 接続文字列を返す。パスワードはURLエスケープする
+// DSN 接続文字列を返す。ユーザー名とパスワードは url.URL がエスケープする
 func (c *Config) DSN() string {
 	sslMode := c.SSLMode
 	if sslMode == "" {
 		sslMode = "disable"
 	}
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		url.PathEscape(c.User),
-		url.PathEscape(c.Password),
-		c.Host,
-		c.Port,
-		c.Database,
-		sslMode,
-	)
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.User, c.Password),
+		Host:     net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
+		Path:     "/" + c.Database,
+		RawQuery: "sslmode=" + url.QueryEscape(sslMode),
+	}
+	return u.String()
 }
 
 // NewPool 設定から pgx のコネクションプールを作成し、疎通を確認して返す

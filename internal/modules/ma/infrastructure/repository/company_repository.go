@@ -247,29 +247,7 @@ func UpsertCriteria(ctx context.Context, db DB, criteria *domain.MAMatchingCrite
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := sqlcgen.New(tx)
-	params := sqlcgen.UpsertCriteriaParams{
-		CompanyID: criteria.CompanyID,
-		Purpose:   string(criteria.Purpose),
-	}
-	if criteria.RevenueMin > 0 {
-		params.RevenueMin = int64Ptr(criteria.RevenueMin)
-	}
-	if criteria.RevenueMax > 0 {
-		params.RevenueMax = int64Ptr(criteria.RevenueMax)
-	}
-	if criteria.EBITDAMin > 0 {
-		params.EbitdaMin = int64Ptr(criteria.EBITDAMin)
-	}
-	if criteria.EmployeeMin > 0 {
-		params.EmployeeMin = int32PtrFromInt(criteria.EmployeeMin)
-	}
-	if criteria.EmployeeMax > 0 {
-		params.EmployeeMax = int32PtrFromInt(criteria.EmployeeMax)
-	}
-	if criteria.MaxDebtEquityRatio > 0 {
-		params.MaxDebtEquityRatio = float64Ptr(criteria.MaxDebtEquityRatio)
-	}
-	if err := q.UpsertCriteria(ctx, params); err != nil {
+	if err := q.UpsertCriteria(ctx, criteriaParams(criteria)); err != nil {
 		return err
 	}
 	if len(criteria.TargetIndustries) > 0 {
@@ -286,6 +264,41 @@ func UpsertCriteria(ctx context.Context, db DB, criteria *domain.MAMatchingCrite
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// criteriaParams ドメインの条件を sqlc のパラメータに変換する。0 は「条件なし」として NULL にする
+func criteriaParams(c *domain.MAMatchingCriteria) sqlcgen.UpsertCriteriaParams {
+	return sqlcgen.UpsertCriteriaParams{
+		CompanyID:          c.CompanyID,
+		Purpose:            string(c.Purpose),
+		RevenueMin:         positiveInt64Ptr(c.RevenueMin),
+		RevenueMax:         positiveInt64Ptr(c.RevenueMax),
+		EbitdaMin:          positiveInt64Ptr(c.EBITDAMin),
+		EmployeeMin:        positiveInt32Ptr(c.EmployeeMin),
+		EmployeeMax:        positiveInt32Ptr(c.EmployeeMax),
+		MaxDebtEquityRatio: positiveFloat64Ptr(c.MaxDebtEquityRatio),
+	}
+}
+
+func positiveInt64Ptr(v int64) *int64 {
+	if v <= 0 {
+		return nil
+	}
+	return int64Ptr(v)
+}
+
+func positiveInt32Ptr(v int) *int32 {
+	if v <= 0 {
+		return nil
+	}
+	return int32PtrFromInt(v)
+}
+
+func positiveFloat64Ptr(v float64) *float64 {
+	if v <= 0 {
+		return nil
+	}
+	return float64Ptr(v)
 }
 
 // InsertCriteriaIndustry マッチング条件の対象業種を1件追加する

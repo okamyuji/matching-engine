@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,14 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("fatal", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+// run サーバーの起動から停止までを行う。エラーは呼び出し元で終了コードに変換する
+func run() error {
 	// 設定読み込み
 	cfg := config.Load()
 
@@ -39,8 +48,7 @@ func main() {
 	})
 	dbCancel()
 	if err != nil {
-		slog.Error("failed to connect database", slog.Any("error", err))
-		os.Exit(1)
+		return fmt.Errorf("connect database: %w", err)
 	}
 	defer db.Close()
 	slog.Info("database connected")
@@ -51,8 +59,7 @@ func main() {
 		MAConfigPath:     "configs/ma/matching.json",
 	})
 	if err != nil {
-		slog.Error("failed to build router", slog.Any("error", err))
-		os.Exit(1)
+		return fmt.Errorf("build router: %w", err)
 	}
 	slog.Info("modules initialized")
 
@@ -66,30 +73,32 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown設定
+	// サーバー起動。エラーはチャネルで受け取り、シグナルと合わせて待つ
+	serverErr := make(chan error, 1)
 	go func() {
 		slog.Info("server listening", slog.String("addr", addr))
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", slog.Any("error", err))
-			os.Exit(1)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
 		}
+		close(serverErr)
 	}()
 
-	// シグナル待機
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	slog.Info("shutting down server")
-
-	// Graceful shutdown実行
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		slog.Error("server shutdown error", slog.Any("error", err))
-		os.Exit(1)
+	select {
+	case err := <-serverErr:
+		if err != nil {
+			return fmt.Errorf("server error: %w", err)
+		}
+	case <-quit:
 	}
 
+	slog.Info("shutting down server")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("server shutdown: %w", err)
+	}
 	slog.Info("server stopped gracefully")
+	return nil
 }

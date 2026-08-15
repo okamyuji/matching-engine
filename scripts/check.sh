@@ -1,95 +1,85 @@
 #!/usr/bin/env bash
 # scripts/check.sh
-# 品質チェック一括実行スクリプト
+# 品質チェック一括実行スクリプト（CI と同じゲート）
 #
 # 使用方法:
-#   ./scripts/check.sh
+#   ./scripts/check.sh            # 全ゲート（mutation testing を含む）
+#   SKIP_MUTATION=1 ./scripts/check.sh   # mutation testing を省略（開発中の高速確認）
 #
-# 必須コマンド:
-#   go fmt/go vet/staticcheck/golangci-lint/go test
-#   全てパスすること
+# ゲート:
+#   1. gofmt          2. go vet          3. staticcheck        4. golangci-lint
+#   5. govulncheck    6. sqlc diff       7. コメント形式        8. go test（race, coverage）
+#   9. カバレッジ >= 80%（sqlcgen / cmd / tools を除く）
+#  10. CRAP < 15（tools/crap）
+#  11. mutation testing（gremlins、効力 >= 80%、DB 非依存パッケージ）
 
-set -e
+set -euo pipefail
 
-# 色定義
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-echo -e "${YELLOW}=== 品質チェック開始 ===${NC}"
-echo ""
+step() { echo -e "${YELLOW}[$1] $2${NC}"; }
+ok() { echo -e "${GREEN}✓ $1${NC}\n"; }
+fail() { echo -e "${RED}✗ $1${NC}"; exit 1; }
 
-# 1. go fmt
-echo -e "${YELLOW}[1/6] go fmt ./...${NC}"
-UNFMT=$(gofmt -l .)
-if [ -n "$UNFMT" ]; then
-    echo -e "${RED}フォーマットされていないファイル:${NC}"
-    echo "$UNFMT"
-    echo -e "${RED}go fmt ./... を実行してください${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ フォーマットOK${NC}"
-echo ""
+COVERAGE_MIN=${COVERAGE_MIN:-80}
+CRAP_MAX=${CRAP_MAX:-15}
 
-# 2. go vet
-echo -e "${YELLOW}[2/6] go vet ./...${NC}"
+echo -e "${YELLOW}=== 品質チェック開始 ===${NC}\n"
+
+step 1/11 "gofmt"
+UNFMT=$(gofmt -l $(git ls-files '*.go' | grep -v '/sqlcgen/'))
+[ -z "$UNFMT" ] || { echo "$UNFMT"; fail "フォーマットされていないファイルがあります"; }
+ok "gofmt"
+
+step 2/11 "go vet ./..."
 go vet ./...
-echo -e "${GREEN}✓ vet OK${NC}"
-echo ""
+ok "vet"
 
-# 3. staticcheck
-echo -e "${YELLOW}[3/6] staticcheck ./...${NC}"
-if command -v staticcheck &> /dev/null; then
-    staticcheck ./...
-    echo -e "${GREEN}✓ staticcheck OK${NC}"
+step 3/11 "staticcheck ./..."
+staticcheck ./...
+ok "staticcheck"
+
+step 4/11 "golangci-lint run ./..."
+golangci-lint run ./...
+ok "golangci-lint"
+
+step 5/11 "govulncheck ./..."
+govulncheck ./...
+ok "govulncheck"
+
+step 6/11 "sqlc diff（生成コードが最新か）"
+sqlc diff
+ok "sqlc"
+
+step 7/11 "コメント形式（'// Name は ...' 形式を禁止、'// Name ...' に統一）"
+BAD_COMMENTS=$(grep -rn --include='*.go' -E '^\s*// [A-Za-z_][A-Za-z0-9_]* は' . | grep -v '/sqlcgen/' || true)
+[ -z "$BAD_COMMENTS" ] || { echo "$BAD_COMMENTS"; fail "「XXX はYYY」形式のコメントがあります。「XXX YYY」形式にしてください"; }
+ok "コメント形式"
+
+step 8/11 "go test -shuffle=on -count=1 -race -coverprofile=coverage.out ./..."
+go test -shuffle=on -count=1 -race -coverprofile=coverage.out ./...
+ok "test"
+
+step 9/11 "カバレッジ >= ${COVERAGE_MIN}%（sqlcgen / cmd / tools を除く）"
+grep -v -E '/sqlcgen/|/cmd/|/tools/' coverage.out > coverage.filtered.out
+COVERAGE=$(go tool cover -func=coverage.filtered.out | grep total | awk '{print $3}' | sed 's/%//')
+echo "Coverage: ${COVERAGE}%"
+awk -v c="$COVERAGE" -v m="$COVERAGE_MIN" 'BEGIN { exit (c+0 >= m+0) ? 0 : 1 }' || fail "カバレッジ ${COVERAGE}% は ${COVERAGE_MIN}% 未満です"
+ok "coverage"
+
+step 10/11 "CRAP < ${CRAP_MAX}"
+go run ./tools/crap -profile coverage.out -threshold "$CRAP_MAX"
+ok "CRAP"
+
+if [ "${SKIP_MUTATION:-0}" = "1" ]; then
+  echo -e "${YELLOW}[11/11] mutation testing はスキップ（SKIP_MUTATION=1）${NC}\n"
 else
-    echo -e "${YELLOW}⚠ staticcheck がインストールされていません${NC}"
-    echo "  go install honnef.co/go/tools/cmd/staticcheck@latest"
+  step 11/11 "mutation testing（gremlins）"
+  gremlins unleash
+  ok "mutation testing"
 fi
-echo ""
 
-# 4. golangci-lint
-echo -e "${YELLOW}[4/6] golangci-lint run ./...${NC}"
-if command -v golangci-lint &> /dev/null; then
-    golangci-lint run ./...
-    echo -e "${GREEN}✓ golangci-lint OK${NC}"
-else
-    echo -e "${YELLOW}⚠ golangci-lint がインストールされていません${NC}"
-    echo "  go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
-fi
-echo ""
-
-# 5. go test (shuffle + no cache + integration tests)
-# cmdとtestutilパッケージを除外してテストを実行
-echo -e "${YELLOW}[5/6] go test -tags=integration -shuffle=on -count=1 -coverprofile=coverage.out (excluding cmd/ and testutil/)${NC}"
-go test -tags=integration -shuffle=on -count=1 -coverprofile=coverage.out $(go list ./... | grep -v "/cmd/" | grep -v "/testutil")
-echo -e "${GREEN}✓ テスト OK${NC}"
-echo ""
-
-# 6. カバレッジチェック (>= 80%)
-echo -e "${YELLOW}[6/6] カバレッジチェック (>= 80%)${NC}"
-
-# coverage.outから直接totalを取得（すでにcmd/とtestutil/は除外済み）
-COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-
-if [ -z "$COVERAGE" ]; then
-    echo -e "${YELLOW}⚠ カバレッジ情報がありません（テストがない可能性）${NC}"
-else
-    echo "Total coverage: ${COVERAGE}%"
-    echo "(Note: Excludes cmd/ and testutil/ packages)"
-
-    # 80%未満チェック
-    if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-        echo -e "${RED}✗ カバレッジ ${COVERAGE}% は 80% 未満です${NC}"
-        echo ""
-        echo "主要パッケージのカバレッジ:"
-        go test -tags=integration -coverprofile=coverage.out $(go list ./... | grep -v "/cmd/" | grep -v "/testutil") 2>&1 | grep "coverage:"
-        exit 1
-    fi
-    echo -e "${GREEN}✓ カバレッジ OK (${COVERAGE}%)${NC}"
-fi
-echo ""
-
-# 完了
-echo -e "${GREEN}=== 全てのチェックが完了しました ===${NC}"
+echo -e "${GREEN}=== 全ゲート通過 ===${NC}"

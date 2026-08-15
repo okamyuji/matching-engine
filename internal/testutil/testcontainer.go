@@ -155,7 +155,7 @@ func setup(ctx context.Context) (*TestDatabase, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer admin.Close(ctx)
+	defer func() { _ = admin.Close(ctx) }()
 
 	// テンプレート作成とDB払い出しは advisory lock で直列化する。
 	// CREATE DATABASE ... TEMPLATE はテンプレートへの接続が無いことを要求するため、
@@ -227,50 +227,78 @@ func ensureTemplate(ctx context.Context, admin *pgx.Conn, adminDSN string, migra
 	sum := sha256.Sum256(migrationSQL)
 	wantHash := hex.EncodeToString(sum[:])
 
-	var exists bool
-	if err := admin.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)", templateDBName).Scan(&exists); err != nil {
-		return fmt.Errorf("check template: %w", err)
+	exists, err := databaseExists(ctx, admin, templateDBName)
+	if err != nil {
+		return err
 	}
 	if exists {
 		gotHash, err := readTemplateHash(ctx, replaceDatabase(adminDSN, templateDBName))
 		if err == nil && gotHash == wantHash {
 			return nil
 		}
-		// 古いテンプレートは作り直す
-		if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE false", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
-			return fmt.Errorf("unmark template: %w", err)
-		}
-		if _, err := admin.Exec(ctx, fmt.Sprintf("DROP DATABASE %s WITH (FORCE)", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
-			return fmt.Errorf("drop stale template: %w", err)
+		if err := dropTemplate(ctx, admin); err != nil {
+			return err
 		}
 	}
+	return createTemplate(ctx, admin, adminDSN, migrationSQL, wantHash)
+}
 
-	if _, err := admin.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+func databaseExists(ctx context.Context, admin *pgx.Conn, name string) (bool, error) {
+	var exists bool
+	if err := admin.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)", name).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check database %s: %w", name, err)
+	}
+	return exists, nil
+}
+
+// dropTemplate 古いテンプレートを削除する（テンプレート属性を外してから強制削除する）
+func dropTemplate(ctx context.Context, admin *pgx.Conn) error {
+	name := pgx.Identifier{templateDBName}.Sanitize()
+	if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE false", name)); err != nil {
+		return fmt.Errorf("unmark template: %w", err)
+	}
+	if _, err := admin.Exec(ctx, fmt.Sprintf("DROP DATABASE %s WITH (FORCE)", name)); err != nil {
+		return fmt.Errorf("drop stale template: %w", err)
+	}
+	return nil
+}
+
+// createTemplate テンプレートDBを作り、マイグレーションとハッシュを書き込んでテンプレート属性を付ける
+func createTemplate(ctx context.Context, admin *pgx.Conn, adminDSN string, migrationSQL []byte, hash string) error {
+	name := pgx.Identifier{templateDBName}.Sanitize()
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		return fmt.Errorf("create template: %w", err)
 	}
-	tconn, err := pgx.Connect(ctx, replaceDatabase(adminDSN, templateDBName))
-	if err != nil {
-		return fmt.Errorf("connect template: %w", err)
+	if err := populateTemplate(ctx, replaceDatabase(adminDSN, templateDBName), migrationSQL, hash); err != nil {
+		return err
 	}
-	if _, err := tconn.Exec(ctx, string(migrationSQL)); err != nil {
-		_ = tconn.Close(ctx)
-		return fmt.Errorf("マイグレーション実行失敗: %w", err)
-	}
-	if _, err := tconn.Exec(ctx, "CREATE TABLE schema_meta (migration_hash text NOT NULL)"); err != nil {
-		_ = tconn.Close(ctx)
-		return fmt.Errorf("create schema_meta: %w", err)
-	}
-	if _, err := tconn.Exec(ctx, "INSERT INTO schema_meta (migration_hash) VALUES ($1)", wantHash); err != nil {
-		_ = tconn.Close(ctx)
-		return fmt.Errorf("record migration hash: %w", err)
-	}
-	if err := tconn.Close(ctx); err != nil {
-		return fmt.Errorf("close template conn: %w", err)
-	}
-	if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE true", pgx.Identifier{templateDBName}.Sanitize())); err != nil {
+	if _, err := admin.Exec(ctx, fmt.Sprintf("ALTER DATABASE %s IS_TEMPLATE true", name)); err != nil {
 		return fmt.Errorf("mark template: %w", err)
 	}
 	return nil
+}
+
+// populateTemplate テンプレートDBに接続してマイグレーションとハッシュを適用し、接続を閉じる
+func populateTemplate(ctx context.Context, dsn string, migrationSQL []byte, hash string) error {
+	tconn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return fmt.Errorf("connect template: %w", err)
+	}
+	defer func() { _ = tconn.Close(ctx) }()
+
+	stmts := []string{
+		string(migrationSQL),
+		"CREATE TABLE schema_meta (migration_hash text NOT NULL)",
+	}
+	for _, stmt := range stmts {
+		if _, err := tconn.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("populate template: %w", err)
+		}
+	}
+	if _, err := tconn.Exec(ctx, "INSERT INTO schema_meta (migration_hash) VALUES ($1)", hash); err != nil {
+		return fmt.Errorf("record migration hash: %w", err)
+	}
+	return tconn.Close(ctx)
 }
 
 func readTemplateHash(ctx context.Context, dsn string) (string, error) {
@@ -278,7 +306,7 @@ func readTemplateHash(ctx context.Context, dsn string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 	var hash string
 	err = conn.QueryRow(ctx, "SELECT migration_hash FROM schema_meta LIMIT 1").Scan(&hash)
 	return hash, err
