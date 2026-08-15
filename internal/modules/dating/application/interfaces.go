@@ -3,7 +3,7 @@ package application
 import (
 	"context"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository"
 )
 
 // MatchingServiceInterface マッチングサービスインターフェース

@@ -2,9 +2,12 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"time"
 
-	"github.com/uptrace/bun"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository/sqlcgen"
 )
 
 // MAMatchRepository M&Aマッチデータアクセス用インターフェース
@@ -14,56 +17,98 @@ type MAMatchRepository interface {
 	FindByID(ctx context.Context, matchID string) (*domain.MAMatch, error)
 }
 
-// maMatchRepository MAMatchRepositoryのBUN実装
+// maMatchRepository MAMatchRepository の sqlc 実装
 type maMatchRepository struct {
-	db *bun.DB
+	q *sqlcgen.Queries
 }
 
-// NewMAMatchRepository 新しいMAMatchRepositoryを作成する
-func NewMAMatchRepository(db *bun.DB) MAMatchRepository {
-	return &maMatchRepository{db: db}
+// NewMAMatchRepository 新しい MAMatchRepository を作成する
+func NewMAMatchRepository(db DB) MAMatchRepository {
+	return &maMatchRepository{q: sqlcgen.New(db)}
 }
 
-// Save マッチを保存する
+// Save 新しいマッチを挿入する
 func (r *maMatchRepository) Save(ctx context.Context, match *domain.MAMatch) error {
-	_, err := r.db.NewInsert().
-		Model(match).
-		Exec(ctx)
-	return err
+	breakdown, err := marshalJSON(match.Breakdown)
+	if err != nil {
+		return fmt.Errorf("marshal breakdown: %w", err)
+	}
+	var synergy []byte
+	if match.SynergySummary != nil {
+		synergy, err = json.Marshal(match.SynergySummary)
+		if err != nil {
+			return fmt.Errorf("marshal synergy summary: %w", err)
+		}
+	}
+	matchedAt := match.MatchedAt
+	if matchedAt.IsZero() {
+		matchedAt = time.Now()
+	}
+	return r.q.InsertMAMatch(ctx, sqlcgen.InsertMAMatchParams{
+		ID:             match.ID,
+		CompanyIDA:     match.CompanyIDA,
+		CompanyIDB:     match.CompanyIDB,
+		Score:          match.Score,
+		Breakdown:      breakdown,
+		SynergySummary: synergy,
+		MatchedAt:      matchedAt,
+	})
 }
 
-// FindMutual 企業の相互マッチを取得する（双方向の興味表明がある）
+// FindMutual 双方向に関心表明がある（相互）マッチだけを取得する
 func (r *maMatchRepository) FindMutual(ctx context.Context, companyID string) ([]*domain.MAMatch, error) {
-	var matches []*domain.MAMatch
-
-	// 双方向の興味表明が存在するマッチのみを取得
-	err := r.db.NewSelect().
-		Model(&matches).
-		Where("company_id_a = ? OR company_id_b = ?", companyID, companyID).
-		Where("EXISTS (SELECT 1 FROM ma_interests WHERE from_company_id = company_id_a AND to_company_id = company_id_b)").
-		Where("EXISTS (SELECT 1 FROM ma_interests WHERE from_company_id = company_id_b AND to_company_id = company_id_a)").
-		Order("matched_at DESC").
-		Scan(ctx)
-
+	rows, err := r.q.ListMutualMAMatchesByCompany(ctx, companyID)
 	if err != nil {
 		return nil, err
 	}
-
-	return matches, nil
+	out := make([]*domain.MAMatch, 0, len(rows))
+	for _, row := range rows {
+		m, err := maMatchFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // FindByID IDによりマッチを取得する
 func (r *maMatchRepository) FindByID(ctx context.Context, matchID string) (*domain.MAMatch, error) {
-	match := &domain.MAMatch{}
-
-	err := r.db.NewSelect().
-		Model(match).
-		Where("id = ?", matchID).
-		Scan(ctx)
-
+	row, err := r.q.GetMAMatch(ctx, matchID)
 	if err != nil {
 		return nil, err
 	}
+	return maMatchFromRow(row)
+}
 
-	return match, nil
+func maMatchFromRow(row sqlcgen.MaMatch) (*domain.MAMatch, error) {
+	var breakdown map[string]float64
+	if len(row.Breakdown) > 0 {
+		if err := json.Unmarshal(row.Breakdown, &breakdown); err != nil {
+			return nil, fmt.Errorf("match %s breakdown: %w", row.ID, err)
+		}
+	}
+	var synergy *domain.SynergySummary
+	if len(row.SynergySummary) > 0 {
+		synergy = &domain.SynergySummary{}
+		if err := json.Unmarshal(row.SynergySummary, synergy); err != nil {
+			return nil, fmt.Errorf("match %s synergy summary: %w", row.ID, err)
+		}
+	}
+	return &domain.MAMatch{
+		ID:             row.ID,
+		CompanyIDA:     row.CompanyIDA,
+		CompanyIDB:     row.CompanyIDB,
+		Score:          row.Score,
+		Breakdown:      breakdown,
+		SynergySummary: synergy,
+		MatchedAt:      row.MatchedAt,
+	}, nil
+}
+
+func marshalJSON(v map[string]float64) ([]byte, error) {
+	if v == nil {
+		return nil, nil //nolint:nilnil // 内訳なしは NULL として保存する
+	}
+	return json.Marshal(v)
 }

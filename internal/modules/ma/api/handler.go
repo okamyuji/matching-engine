@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/application"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/application"
 )
 
 // userIDKey コンテキストキー（認証ミドルウェアで設定される）

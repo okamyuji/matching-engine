@@ -40,7 +40,7 @@ type TransformConfig struct {
 
 // LoadConfig JSONファイルから設定を読み込む
 func LoadConfig(path string) (*MatchingConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // 設定ファイルのパスは起動時に運用者が指定する
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}

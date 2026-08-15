@@ -100,21 +100,9 @@ func (s *CompositeScorer) Score(
 		}
 
 		// 2. 類似度または距離を計算
-		var score float64
-		var err error
-
-		if comp.Similarity != nil {
-			score, err = comp.Similarity.Compute(a, b)
-			if err != nil {
-				return 0, nil, fmt.Errorf("component %s similarity computation failed: %w", comp.Name, err)
-			}
-		} else if comp.Distance != nil {
-			distance, err := comp.Distance.Compute(a, b)
-			if err != nil {
-				return 0, nil, fmt.Errorf("component %s distance computation failed: %w", comp.Name, err)
-			}
-			// デフォルト距離から類似度への変換: 1 / (1 + d)
-			score = 1.0 / (1.0 + distance)
+		score, err := comp.rawScore(a, b)
+		if err != nil {
+			return 0, nil, err
 		}
 
 		// 3. 変換関数を適用
@@ -148,4 +136,24 @@ func (s *CompositeScorer) Score(
 	}
 
 	return finalScore, breakdown, nil
+}
+
+// rawScore 類似度関数または距離関数から変換前のスコア（0〜1）を計算する。
+// 距離は 1 / (1 + d) で類似度に変換する
+func (c *ScoringComponent) rawScore(a, b *FeatureVector) (float64, error) {
+	if c.Similarity != nil {
+		score, err := c.Similarity.Compute(a, b)
+		if err != nil {
+			return 0, fmt.Errorf("component %s similarity computation failed: %w", c.Name, err)
+		}
+		return score, nil
+	}
+	if c.Distance != nil {
+		distance, err := c.Distance.Compute(a, b)
+		if err != nil {
+			return 0, fmt.Errorf("component %s distance computation failed: %w", c.Name, err)
+		}
+		return 1.0 / (1.0 + distance), nil
+	}
+	return 0, nil
 }

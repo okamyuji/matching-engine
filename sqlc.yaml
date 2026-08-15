@@ -1,0 +1,40 @@
+# sqlc 設定。スキーマは db/migrations、クエリはモジュールごとの queries/ に置き、
+# 生成コードは各モジュールの repository/sqlcgen に出力する。
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "internal/modules/dating/infrastructure/repository/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/modules/dating/infrastructure/repository/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        overrides: &overrides
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "date"
+            go_type: "time.Time"
+          - db_type: "date"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "internal/modules/ma/infrastructure/repository/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/modules/ma/infrastructure/repository/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        overrides: *overrides

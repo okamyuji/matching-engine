@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
 )
 
 // MAFeatureMapper M&Aドメインから特徴ベクトルへの変換
@@ -60,10 +60,12 @@ func (m *MAFeatureMapper) ToFeatureVector(
 	fv.SetCategorical("stage", inferCompanyStage(company, latest), 1.0)
 
 	// スパース特徴（技術ポートフォリオ、市場セグメント等）
+	fv.EnsureSparse("technology")
 	for _, tech := range company.Technologies {
 		fv.SetSparse("technology", tech.Technology, 1.0)
 	}
 
+	fv.EnsureSparse("market")
 	for _, market := range company.Markets {
 		fv.SetSparse("market", market.Market, 1.0)
 	}

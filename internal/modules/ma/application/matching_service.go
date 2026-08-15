@@ -2,12 +2,15 @@ package application
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"time"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
-	"github.com/yourorg/matching-engine/internal/modules/ma/infrastructure/mapper"
-	"github.com/yourorg/matching-engine/internal/modules/ma/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/mapper"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository"
 )
 
 // MAMatchingService M&Aマッチング処理を統括する
@@ -245,7 +248,11 @@ func getCandidateFinancials(candidates []*repository.CompanyWithFinancials, comp
 
 // generateID 簡易的なID生成（本番環境ではUUIDなどを使用）
 func generateID() string {
-	// 本番環境では github.com/google/uuid などを使用すべき
-	// ここでは簡易実装として現在時刻ベースのIDを生成
-	return fmt.Sprintf("id_%d", 1000000000) // 仮実装
+	// 衝突しない乱数IDを生成する（16バイトの暗号学的乱数を16進表記）
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// 乱数源が使えない環境は想定しないが、失敗時も一意性を保つため時刻を併用する
+		return fmt.Sprintf("id_%d", time.Now().UnixNano())
+	}
+	return "id_" + hex.EncodeToString(b)
 }

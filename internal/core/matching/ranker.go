@@ -180,7 +180,7 @@ func (r *Ranker) applyRandomness(matches []ScoredMatch) []ScoredMatch {
 		randomMultiplier := 1.0 + (rand.Float64()*2-1)*r.Config.RandomFactor
 
 		// ソート用の一時スコアを作成（実際のスコアは変更しない）
-		perturbed[i].Score = perturbed[i].Score * randomMultiplier
+		perturbed[i].Score *= randomMultiplier
 	}
 
 	// 摂動を加えたスコアで再ソート

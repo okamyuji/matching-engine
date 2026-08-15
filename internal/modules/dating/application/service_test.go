@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/mapper"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/mapper"
 )
 
 // 注記: 完全なサービステストにはTestContainersを使用した結合テストが必要

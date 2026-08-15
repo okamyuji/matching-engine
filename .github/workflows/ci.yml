@@ -2,11 +2,15 @@
 # GitHub Actions CI設定
 #
 # トリガー: push, pull_request
-# 必須パス: go fmt/go vet/staticcheck/golangci-lint/go test
-# カバレッジ: 70%以上（ci ジョブの test-command 内でゲート）
+# ゲート:
+#   lint      : gofmt / go vet / staticcheck / golangci-lint / govulncheck / sqlc diff / コメント形式
+#   ci        : go build / go test（-race、testcontainers で PostgreSQL 18 を起動）/ カバレッジ 80% 以上 / CRAP < 15
+#   mutation  : gremlins（DB 非依存パッケージ、効力 80% 以上）
+#   security  : gitleaks
+#   build     : 成果物のビルド
+#   docker    : main への push のみイメージをビルド
 #
 # vet / build / test は okamyuji/reusable-workflows の go-ci.yml@v1 に共通化。
-# lint / build(成果物) / docker は固有要件のため残置。
 
 name: CI
 
@@ -21,7 +25,9 @@ on:
       - develop
 
 env:
-  GO_VERSION: '1.25'
+  GO_VERSION: '1.25.13'
+  # CI は使い捨て環境なのでコンテナ再利用は無効にし、Ryuk に後始末させる
+  TESTCONTAINERS_REUSE: 'false'
 
 permissions:
   contents: read
@@ -42,7 +48,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          UNFMT=$(gofmt -l .)
+          UNFMT=$(gofmt -l $(git ls-files '*.go' | grep -v '/sqlcgen/'))
           if [ -n "$UNFMT" ]; then
             echo "Files not formatted:"
             echo "$UNFMT"
@@ -52,8 +58,11 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - name: Install tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
       - name: Run staticcheck
         run: staticcheck ./...
@@ -61,27 +70,61 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.7
+          version: v2.12
+
+      - name: govulncheck
+        run: govulncheck ./...
+
+      - name: sqlc diff（生成コードが最新か）
+        run: sqlc diff
+
+      - name: コメント形式（「XXX はYYY」を禁止）
+        run: |
+          BAD=$(grep -rn --include='*.go' -E '^\s*// [A-Za-z_][A-Za-z0-9_]* は' . | grep -v '/sqlcgen/' || true)
+          if [ -n "$BAD" ]; then
+            echo "$BAD"
+            echo "「XXX はYYY」形式のコメントがあります。「XXX YYY」形式にしてください"
+            exit 1
+          fi
 
   # go vet / go build / テスト。Go バージョンは go.mod から解決する。
-  # リポジトリ層のテストは testcontainers が MySQL を自前起動するため
-  # サービスコンテナは不要。カバレッジ 70% ゲートは従来どおり維持する。
+  # リポジトリ層と E2E のテストは testcontainers が PostgreSQL 18 を自前起動するため
+  # サービスコンテナは不要。カバレッジ 80% と CRAP < 15 をゲートにする。
   ci:
     needs: lint
     uses: okamyuji/reusable-workflows/.github/workflows/go-ci.yml@v1
     with:
       test-command: |
         go test -shuffle=on -count=1 -race -coverprofile=coverage.out ./...
-        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-        echo "Coverage: ${COVERAGE}%"
+        grep -v -E '/sqlcgen/|/cmd/|/tools/' coverage.out > coverage.filtered.out
+        COVERAGE=$(go tool cover -func=coverage.filtered.out | grep total | awk '{print $3}' | sed 's/%//')
+        echo "Coverage (excluding sqlcgen/cmd/tools): ${COVERAGE}%"
         if [ -z "$COVERAGE" ]; then
           echo "No coverage data"
-          exit 0
-        fi
-        if (( $(echo "$COVERAGE < 70" | bc -l) )); then
-          echo "Coverage ${COVERAGE}% is below 70%"
           exit 1
         fi
+        awk -v c="$COVERAGE" 'BEGIN { exit (c+0 >= 80) ? 0 : 1 }' || { echo "Coverage ${COVERAGE}% is below 80%"; exit 1; }
+        go run ./tools/crap -profile coverage.out -threshold 15
+
+  mutation:
+    name: Mutation testing (gremlins)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+
+      - name: Run gremlins
+        run: gremlins unleash
 
   # gitleaks による秘密情報スキャン（fetch-depth: 0 で履歴全体、GITHUB_TOKEN 内蔵）。
   security:

@@ -1,0 +1,23 @@
+# gremlins（mutation testing）設定
+# 対象は純粋ロジック（コアエンジン、アプリケーション層、ドメイン、マッパー、API ハンドラ、共有ユーティリティ）。
+# DB を必要とするリポジトリ層・E2E・配線・生成コードは、変異体ごとに testcontainers を起動すると
+# 実行時間が非現実的になるため対象外にする（結合の正しさは通常のテストと E2E で担保する）。
+# exclude-files は正規表現（glob ではない）。設定キーは unleash セクション配下に置く。
+silent: false
+unleash:
+  workers: 2
+  timeout-coefficient: 30
+  threshold-efficacy: 80
+  threshold-mcover: 70
+  exclude-files:
+    - "sqlcgen/"
+    - "_test\\.go$"
+    - "^tools/"
+    - "^cmd/"
+    - "^test/"
+    - "internal/testutil/"
+    - "internal/app/"
+    - "internal/shared/database/"
+    - "internal/shared/health/"
+    - "internal/shared/logger/"
+    - "infrastructure/repository/"

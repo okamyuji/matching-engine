@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
 )
 
 func TestDatingFeatureMapper_ToFeatureVector(t *testing.T) {

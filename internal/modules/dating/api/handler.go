@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/application"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/application"
 )
 
 // Handler Dating API のHTTPリクエストを処理する

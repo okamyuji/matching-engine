@@ -1,8 +1,8 @@
 package application
 
 import (
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
 )
 
 // SynergyCalculator シナジー計算

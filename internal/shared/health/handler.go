@@ -1,64 +1,53 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
-
-	"github.com/uptrace/bun"
+	"time"
 )
+
+// Pinger データベースの疎通確認だけを行う最小インターフェース
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
 
 // Handler ヘルスチェックハンドラー
 type Handler struct {
-	db *bun.DB
+	db Pinger
 }
 
 // NewHandler 新しいヘルスチェックハンドラーを作成する
-func NewHandler(db *bun.DB) *Handler {
+func NewHandler(db Pinger) *Handler {
 	return &Handler{db: db}
 }
 
 // LivenessHandler アプリケーションが起動しているかチェックする
 // GET /health/live
-func (h *Handler) LivenessHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	response := map[string]string{
-		"status": "ok",
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+func (h *Handler) LivenessHandler(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // ReadinessHandler アプリケーションがリクエストを受け付けられるかチェックする
 // GET /health/ready
 func (h *Handler) ReadinessHandler(w http.ResponseWriter, r *http.Request) {
-	// データベース接続をチェック
-	if err := h.db.Ping(); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
 
-		response := map[string]string{
+	if err := h.db.Ping(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"status": "unavailable",
 			"error":  "database connection failed",
-		}
-
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		})
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
 
+func writeJSON(w http.ResponseWriter, status int, body map[string]string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	response := map[string]string{
-		"status": "ready",
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(body); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

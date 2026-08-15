@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository"
 )
 
 // mockUserRepository ユーザーリポジトリのモック実装

@@ -3,7 +3,7 @@ package application
 import (
 	"testing"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
 )
 
 func TestSynergyCalculator_Calculate(t *testing.T) {

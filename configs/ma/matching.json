@@ -1,66 +1,50 @@
 {
-  "scoringComponents": [
-    {
-      "name": "financial_health",
-      "type": "euclidean",
-      "weight": 0.25,
-      "fields": ["revenue", "ebitda_margin", "roe", "roa", "debt_equity_ratio", "current_ratio"]
-    },
-    {
-      "name": "industry_synergy",
-      "type": "categorical",
-      "weight": 0.15,
-      "fields": ["industry"]
-    },
-    {
-      "name": "technology_overlap",
-      "type": "jaccard",
-      "weight": 0.20,
-      "fields": ["technology"]
-    },
-    {
-      "name": "growth_trajectory",
-      "type": "time_series",
-      "weight": 0.15,
-      "fields": ["revenue_trend"]
-    },
-    {
-      "name": "profitability_trend",
-      "type": "time_series",
-      "weight": 0.10,
-      "fields": ["ebitda_trend"]
-    },
-    {
-      "name": "customer_segment_fit",
-      "type": "jaccard",
-      "weight": 0.10,
-      "fields": ["market"]
-    },
-    {
-      "name": "market_overlap",
-      "type": "jaccard",
-      "weight": 0.05,
-      "fields": ["market"]
-    }
-  ],
-  "filters": [
-    {
-      "field": "debt_equity_ratio",
-      "operator": "less_than",
-      "value": 4.0
-    },
-    {
-      "field": "revenue_trend.trend",
-      "operator": "greater_than",
-      "value": 0.05
-    }
-  ],
+  "version": "1.0",
+  "domain": "ma",
+  "description": "M&A matching configuration with weighted scoring components",
+  "scoring": {
+    "min_score": 0.30,
+    "components": [
+      {
+        "name": "financial_health",
+        "type": "euclidean",
+        "fields": ["ebitda_margin", "roe", "roa", "debt_equity_ratio", "current_ratio"],
+        "weight": 0.25
+      },
+      {
+        "name": "industry_synergy",
+        "type": "categorical",
+        "field": "industry",
+        "weight": 0.15
+      },
+      {
+        "name": "technology_overlap",
+        "type": "jaccard",
+        "field": "technology",
+        "weight": 0.25
+      },
+      {
+        "name": "market_overlap",
+        "type": "jaccard",
+        "field": "market",
+        "weight": 0.20
+      },
+      {
+        "name": "location_match",
+        "type": "categorical",
+        "field": "location",
+        "weight": 0.15
+      }
+    ]
+  },
   "ranking": {
-    "minScore": 0.50,
+    "sort_order": "desc",
+    "limit": 30,
     "diversity": {
-      "groupBy": "industry",
-      "maxPerGroup": 3
+      "enabled": true,
+      "group_by_field": "industry",
+      "max_per_group": 10
     },
-    "randomFactor": 0.05
+    "random_factor": 0.0
   }
 }

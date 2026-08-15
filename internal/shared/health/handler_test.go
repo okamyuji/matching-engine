@@ -6,14 +6,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yourorg/matching-engine/internal/testutil"
+	"github.com/okamyuji/matching-engine/internal/testutil"
 )
 
 func TestLivenessHandler(t *testing.T) {
 	// testutilのSharedTestDBを使用
 	td := testutil.GetSharedTestDB(t)
 
-	handler := NewHandler(td.DB)
+	handler := NewHandler(td.Pool)
 
 	req := httptest.NewRequest(http.MethodGet, "/health/live", nil)
 	w := httptest.NewRecorder()
@@ -38,7 +38,7 @@ func TestReadinessHandler_Success(t *testing.T) {
 	// testutilのSharedTestDBを使用
 	td := testutil.GetSharedTestDB(t)
 
-	handler := NewHandler(td.DB)
+	handler := NewHandler(td.Pool)
 
 	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
 	w := httptest.NewRecorder()

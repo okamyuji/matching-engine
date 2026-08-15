@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/yourorg/matching-engine/internal/core/matching"
-	"github.com/yourorg/matching-engine/internal/modules/dating/domain"
-	"github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/mapper"
-	"github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/core/matching"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/mapper"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository"
 )
 
 // DatingMatchingService デートマッチング処理を統括する

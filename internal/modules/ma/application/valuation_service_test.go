@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/yourorg/matching-engine/internal/modules/ma/domain"
+	"github.com/okamyuji/matching-engine/internal/modules/ma/domain"
 )
 
 // MockFinancialsRepository FinancialsRepositoryのモック

@@ -102,6 +102,17 @@ func (f *FeatureVector) SetSparse(key, item string, weight float64) {
 	f.Sparse[key][item] = weight
 }
 
+// EnsureSparse スパース特徴のキーを空集合として確保する。要素が無い場合でも
+// Jaccard 類似度がフィールド未定義エラーにならないようにするために使う
+func (f *FeatureVector) EnsureSparse(key string) {
+	if f.Sparse == nil {
+		f.Sparse = make(map[string]map[string]float64)
+	}
+	if f.Sparse[key] == nil {
+		f.Sparse[key] = make(map[string]float64)
+	}
+}
+
 // SetTimeSeries 時系列統計を設定する
 func (f *FeatureVector) SetTimeSeries(key string, stats *TimeSeriesStats) {
 	if f.TimeSeries == nil {

@@ -1,5 +1,5 @@
 # .golangci.yml
-# golangci-lint設定ファイル
+# golangci-lint v2 設定。生成コード（sqlcgen）は対象外にする。
 
 version: "2"
 
@@ -8,6 +8,7 @@ run:
   tests: true
 
 linters:
+  default: none
   enable:
     - errcheck
     - govet
@@ -15,13 +16,26 @@ linters:
     - staticcheck
     - unused
     - misspell
-  disable:
-    - depguard
-
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gocyclo
+    - gosec
+    - nilerr
+    - nilnil
+    - noctx
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
   settings:
     errcheck:
       check-type-assertions: true
-      check-blank: true
+      check-blank: false
     govet:
       enable-all: true
       disable:
@@ -29,6 +43,42 @@ linters:
         - fieldalignment
     misspell:
       locale: US
+    gocyclo:
+      min-complexity: 20
+    gosec:
+      excludes:
+        - G404 # ランダム性はランキング摂動用で暗号用途ではない
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+  exclusions:
+    generated: lax
+    paths:
+      - internal/modules/dating/infrastructure/repository/sqlcgen
+      - internal/modules/ma/infrastructure/repository/sqlcgen
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - noctx
+          - unparam
+          - errcheck
+          - gocyclo
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    paths:
+      - internal/modules/dating/infrastructure/repository/sqlcgen
+      - internal/modules/ma/infrastructure/repository/sqlcgen
 
 issues:
   max-issues-per-linter: 0

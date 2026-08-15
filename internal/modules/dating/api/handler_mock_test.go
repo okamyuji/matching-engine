@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yourorg/matching-engine/internal/modules/dating/application"
-	"github.com/yourorg/matching-engine/internal/modules/dating/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/application"
+	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository"
 )
 
 // mockMatchingService モックマッチングサービス
