@@ -163,5 +163,9 @@ func loadProfile(ctx context.Context, q *sqlcgen.Queries, userID string) (*domai
 		}
 		return nil, fmt.Errorf("load profile %s: %w", userID, err)
 	}
-	return profileFromRow(row), nil
+	profile := profileFromRow(row)
+	if err := loadProfileRelations(ctx, q, profile); err != nil {
+		return nil, err
+	}
+	return profile, nil
 }

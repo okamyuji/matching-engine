@@ -2,28 +2,16 @@ package api
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/okamyuji/matching-engine/internal/shared/auth"
 )
 
-// JWT秘密鍵（環境変数から取得、デフォルトは開発用）
-var jwtSecret = getJWTSecret()
-
-func getJWTSecret() []byte {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		// 開発環境用のデフォルト秘密鍵
-		secret = "development-secret-key-change-in-production"
-	}
-	return []byte(secret)
-}
+// jwtSecret JWT秘密鍵（環境変数 JWT_SECRET、未設定なら開発用の既定値）
+var jwtSecret = auth.SecretFromEnv()
 
 // jwtClaims JWT クレーム構造体
 type jwtClaims struct {
@@ -66,52 +54,19 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 // validateJWT JWTトークンを検証してクレームを返す
 func validateJWT(token string) (*jwtClaims, error) {
-	// トークンを3つの部分に分割（header.payload.signature）
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return nil, &jwtError{"invalid token format"}
-	}
-
-	// 署名を検証
-	message := parts[0] + "." + parts[1]
-	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	claims, err := auth.Verify(jwtSecret, token)
 	if err != nil {
-		return nil, &jwtError{"invalid signature encoding"}
+		return nil, &jwtError{strings.TrimPrefix(err.Error(), auth.ErrInvalidToken.Error()+": ")}
 	}
-
-	// HMAC SHA256で署名を計算
-	mac := hmac.New(sha256.New, jwtSecret)
-	mac.Write([]byte(message))
-	expectedSignature := mac.Sum(nil)
-
-	// 署名を比較
-	if !hmac.Equal(signature, expectedSignature) {
-		return nil, &jwtError{"signature verification failed"}
-	}
-
-	// ペイロードをデコード
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, &jwtError{"invalid payload encoding"}
-	}
-
-	// クレームをパース
-	var claims jwtClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, &jwtError{"invalid claims format"}
-	}
-
-	// 有効期限を確認
-	if claims.Exp > 0 && time.Now().Unix() > claims.Exp {
-		return nil, &jwtError{"token expired"}
-	}
-
-	// ユーザーIDが存在することを確認
-	if claims.UserID == "" {
+	userID := auth.StringClaim(claims, "user_id")
+	if userID == "" {
 		return nil, &jwtError{"missing user_id in claims"}
 	}
-
-	return &claims, nil
+	var exp int64
+	if v, ok := claims["exp"].(float64); ok {
+		exp = int64(v)
+	}
+	return &jwtClaims{UserID: userID, Exp: exp}, nil
 }
 
 // jwtError JWT検証エラー

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/okamyuji/matching-engine/internal/modules/dating/domain"
 	"github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository/sqlcgen"
@@ -23,13 +24,38 @@ func NewProfileRepository(db DB) ProfileRepository {
 	return &profileRepository{q: sqlcgen.New(db)}
 }
 
-// FindByUserID ユーザーIDによりプロフィールを取得する
+// FindByUserID ユーザーIDによりプロフィール（タグ・写真を含む）を取得する
 func (r *profileRepository) FindByUserID(ctx context.Context, userID string) (*domain.Profile, error) {
 	row, err := r.q.GetProfile(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	return profileFromRow(row), nil
+	profile := profileFromRow(row)
+	if err := loadProfileRelations(ctx, r.q, profile); err != nil {
+		return nil, err
+	}
+	return profile, nil
+}
+
+// loadProfileRelations タグと写真を読み込む
+func loadProfileRelations(ctx context.Context, q *sqlcgen.Queries, profile *domain.Profile) error {
+	tags, err := q.ListProfileTags(ctx, profile.UserID)
+	if err != nil {
+		return fmt.Errorf("list tags %s: %w", profile.UserID, err)
+	}
+	profile.Tags = make([]domain.ProfileTag, 0, len(tags))
+	for _, t := range tags {
+		profile.Tags = append(profile.Tags, domain.ProfileTag{ID: t.ID, UserID: t.UserID, Tag: t.Tag})
+	}
+	photos, err := q.ListProfilePhotos(ctx, profile.UserID)
+	if err != nil {
+		return fmt.Errorf("list photos %s: %w", profile.UserID, err)
+	}
+	profile.Photos = make([]domain.ProfilePhoto, 0, len(photos))
+	for _, p := range photos {
+		profile.Photos = append(profile.Photos, domain.ProfilePhoto{ID: p.ID, UserID: p.UserID, URL: p.Url, IsPrimary: p.IsPrimary, DisplayOrder: int(p.DisplayOrder), CreatedAt: p.CreatedAt})
+	}
+	return nil
 }
 
 // Upsert プロフィールを挿入または更新する

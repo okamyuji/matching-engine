@@ -40,7 +40,8 @@ func (m *DatingFeatureMapper) ToFeatureVector(
 	fv.SetCategorical("smoking", string(profile.Smoking), 1.0)
 	fv.SetCategorical("drinking", string(profile.Drinking), 1.0)
 
-	// スパース特徴量 (タグ) - リレーションから取得
+	// スパース特徴量 (タグ) - リレーションから取得。タグが無くてもキーは確保する
+	fv.EnsureSparse("tags")
 	for _, tag := range profile.Tags {
 		fv.SetSparse("tags", tag.Tag, 1.0)
 	}

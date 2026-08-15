@@ -10,18 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/okamyuji/matching-engine/internal/core/matching"
-	datingAPI "github.com/okamyuji/matching-engine/internal/modules/dating/api"
-	datingApp "github.com/okamyuji/matching-engine/internal/modules/dating/application"
-	datingInfra "github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/mapper"
-	datingRepo "github.com/okamyuji/matching-engine/internal/modules/dating/infrastructure/repository"
-	maAPI "github.com/okamyuji/matching-engine/internal/modules/ma/api"
-	maApp "github.com/okamyuji/matching-engine/internal/modules/ma/application"
-	maInfra "github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/mapper"
-	maRepo "github.com/okamyuji/matching-engine/internal/modules/ma/infrastructure/repository"
+	"github.com/okamyuji/matching-engine/internal/app"
 	"github.com/okamyuji/matching-engine/internal/shared/config"
 	"github.com/okamyuji/matching-engine/internal/shared/database"
-	"github.com/okamyuji/matching-engine/internal/shared/health"
 	"github.com/okamyuji/matching-engine/internal/shared/logger"
 )
 
@@ -54,110 +45,22 @@ func main() {
 	defer db.Close()
 	slog.Info("database connected")
 
-	// Datingモジュール初期化
-	slog.Info("initializing dating module")
-	datingConfig, err := matching.LoadConfig("configs/dating/matching.json")
+	// ルーター構築（モジュールの配線は internal/app に集約）
+	handler, err := app.NewRouter(db, app.Options{
+		DatingConfigPath: "configs/dating/matching.json",
+		MAConfigPath:     "configs/ma/matching.json",
+	})
 	if err != nil {
-		slog.Error("failed to load dating config", slog.Any("error", err))
+		slog.Error("failed to build router", slog.Any("error", err))
 		os.Exit(1)
 	}
-
-	datingEngine, err := matching.NewConfigurableEngine(datingConfig)
-	if err != nil {
-		slog.Error("failed to create dating engine", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	// Dating repositories
-	datingUserRepo := datingRepo.NewUserRepository(db)
-	datingProfileRepo := datingRepo.NewProfileRepository(db)
-	datingPreferenceRepo := datingRepo.NewPreferenceRepository(db)
-	datingLikeRepo := datingRepo.NewLikeRepository(db)
-	datingMatchRepo := datingRepo.NewMatchRepository(db)
-
-	// Dating mapper
-	datingMapper := datingInfra.NewDatingFeatureMapper()
-
-	// Dating services
-	datingMatchingService := datingApp.NewDatingMatchingService(
-		datingEngine,
-		datingUserRepo,
-		datingProfileRepo,
-		datingPreferenceRepo,
-		datingMatchRepo,
-		datingMapper,
-	)
-
-	datingLikeService := datingApp.NewLikeService(
-		datingLikeRepo,
-		datingMatchRepo,
-	)
-
-	// Dating API handler
-	datingHandler := datingAPI.NewHandler(datingMatchingService, datingLikeService)
-	slog.Info("dating module initialized")
-
-	// M&Aモジュール初期化
-	slog.Info("initializing ma module")
-	maConfig, err := matching.LoadConfig("configs/ma/matching.json")
-	if err != nil {
-		slog.Error("failed to load ma config", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	maEngine, err := matching.NewConfigurableEngine(maConfig)
-	if err != nil {
-		slog.Error("failed to create ma engine", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	// M&A repositories
-	maCompanyRepo := maRepo.NewCompanyRepository(db)
-	maFinancialsRepo := maRepo.NewFinancialsRepository(db)
-	maInterestRepo := maRepo.NewInterestRepository(db)
-	maMatchRepo := maRepo.NewMAMatchRepository(db)
-
-	// M&A mapper
-	maMapper := maInfra.NewMAFeatureMapper()
-
-	// M&A services
-	maSynergyCalculator := maApp.NewSynergyCalculator()
-
-	maMatchingService := maApp.NewMAMatchingService(
-		maEngine,
-		maCompanyRepo,
-		maFinancialsRepo,
-		maInterestRepo,
-		maMatchRepo,
-		maMapper,
-		maSynergyCalculator,
-	)
-
-	maValuationService := maApp.NewValuationService(maFinancialsRepo)
-
-	// M&A API handler
-	maHandler := maAPI.NewHandler(maMatchingService, maValuationService)
-	slog.Info("ma module initialized")
-
-	// ルーター設定
-	mux := http.NewServeMux()
-
-	// ヘルスチェック
-	healthHandler := health.NewHandler(db)
-	mux.HandleFunc("GET /health/live", healthHandler.LivenessHandler)
-	mux.HandleFunc("GET /health/ready", healthHandler.ReadinessHandler)
-
-	// Dating APIルート
-	datingAPI.SetupRoutes(mux, datingHandler)
-
-	// M&A APIルート
-	maAPI.SetupRoutes(mux, maHandler)
+	slog.Info("modules initialized")
 
 	// HTTPサーバー設定
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
