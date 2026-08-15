@@ -42,8 +42,8 @@ func run() error {
 		Password:        cfg.Database.Password,
 		Database:        cfg.Database.Database,
 		SSLMode:         cfg.Database.SSLMode,
-		MaxConns:        int32(cfg.Database.MaxConns), //nolint:gosec // 設定値
-		MinConns:        int32(cfg.Database.MinConns), //nolint:gosec // 設定値
+		MaxConns:        clampConns(cfg.Database.MaxConns),
+		MinConns:        clampConns(cfg.Database.MinConns),
 		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
 	})
 	dbCancel()
@@ -101,4 +101,16 @@ func run() error {
 	}
 	slog.Info("server stopped gracefully")
 	return nil
+}
+
+// clampConns 環境変数由来の接続数を pgxpool が受け付ける範囲（1〜1000）に収めて int32 にする
+func clampConns(n int) int32 {
+	const maxConns = 1000
+	if n < 1 {
+		return 1
+	}
+	if n > maxConns {
+		return maxConns
+	}
+	return int32(n)
 }
