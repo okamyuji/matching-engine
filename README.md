@@ -28,7 +28,7 @@ Modular Monolithアーキテクチャによる汎用マッチングエンジン�
 
 | カテゴリ | 選択 |
 | ------- | ---- |
-| 言語 | Go 1.25+ |
+| 言語 | Go 1.26+ |
 | DB | PostgreSQL 18 |
 | データアクセス | sqlc + pgx/v5 |
 | テスト | testing、testcontainers-go（PostgreSQL 18、コンテナ再利用）、httptest |
