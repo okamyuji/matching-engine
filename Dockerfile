@@ -1,5 +1,5 @@
 # ビルドステージ
-FROM golang:1.26.8-alpine AS builder
+FROM golang:1.26.10-alpine AS builder
 
 # 必要なパッケージをインストール
 RUN apk --no-cache add ca-certificates tzdata

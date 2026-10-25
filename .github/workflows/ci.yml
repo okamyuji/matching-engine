@@ -25,7 +25,7 @@ on:
       - develop
 
 env:
-  GO_VERSION: '1.26.8'
+  GO_VERSION: '1.26.10'
   # CI は使い捨て環境なのでコンテナ再利用は無効にし、Ryuk に後始末させる
   TESTCONTAINERS_REUSE: 'false'
 
